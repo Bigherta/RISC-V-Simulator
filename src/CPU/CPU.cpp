@@ -45,7 +45,7 @@ void CPU::load_n_bytes(int rd, int rs1, int imm, int n, bool isSigned) {
   int32_t result = 0;
   uint32_t start_address = reg[rs1].read() + imm;
   for (int i = 0; i < n; i++) {
-    auto byte_data = static_cast<uint32_t>(mem.read_data(start_address + i));
+    auto byte_data = static_cast<uint32_t>(DataMem.read_data(start_address + i));
     result |= (byte_data << (i << 3));
     if (i == n - 1 && n < 4 && isSigned) {
       if (result & (1 << ((n << 3) - 1))) {
@@ -68,7 +68,7 @@ void CPU::store_n_bytes(int rs1, int rs2, int imm, int n) {
   //             << start_address << std::dec << std::endl;
   for (int i = 0; i < n; i++) {
     auto byte_data = static_cast<uint8_t>(data >> (i << 3));
-    mem.write_data(start_address + i, byte_data);
+    DataMem.write_data(start_address + i, byte_data);
   }
 }
 
@@ -399,10 +399,10 @@ void CPU::apply_operation(Instruct inst) {
 void CPU::run() {
   int32_t raw_inst = 0;
   while (raw_inst != 0x0ff00513) {
-    auto first_byte = static_cast<uint32_t>(mem.read_data(programCounter));
-    auto second_byte = static_cast<uint32_t>(mem.read_data(programCounter + 1));
-    auto third_byte = static_cast<uint32_t>(mem.read_data(programCounter + 2));
-    auto fourth_byte = static_cast<uint32_t>(mem.read_data(programCounter + 3));
+    auto first_byte = static_cast<uint32_t>(InstructMem.read_data(programCounter));
+    auto second_byte = static_cast<uint32_t>(InstructMem.read_data(programCounter + 1));
+    auto third_byte = static_cast<uint32_t>(InstructMem.read_data(programCounter + 2));
+    auto fourth_byte = static_cast<uint32_t>(InstructMem.read_data(programCounter + 3));
     raw_inst = first_byte | (second_byte << 8) | (third_byte << 16) |
                (fourth_byte << 24);
     auto inst = Decoder::decode(raw_inst);

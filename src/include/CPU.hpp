@@ -2,13 +2,13 @@
 #ifndef CPU_HPP
 #define CPU_HPP
 #include "../include/Memory.hpp"
-#include <cstdint>
 #include "Register.hpp"
 #include "common.hpp"
+#include <cstdint>
 class CPU {
 private:
   Register reg[32];
-  Memory mem;
+  Memory InstructMem, DataMem;
   uint32_t programCounter;
 
 public:
@@ -27,5 +27,6 @@ public:
   void run();
 };
 
-inline CPU::CPU(Memory mem) : mem(mem), programCounter(0x0000) {}
+inline CPU::CPU(Memory mem)
+    : InstructMem(mem), DataMem(mem), programCounter(0x0000) {}
 #endif // CPU_HPP

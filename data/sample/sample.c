@@ -1,4 +1,4 @@
-#include "io.inc"
+#include "../testcases/io.inc"
 
 int main() {
   printInt(177);

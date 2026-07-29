@@ -13,6 +13,7 @@ enum Op {
     SRA,
     SLT,
     SLTU,
+    OP_INVALID,
 };
 
 enum RISC_V {
@@ -23,11 +24,11 @@ enum RISC_V {
     B,
     U,
     J,
-    INVALID,
+    RV_INVALID,
 };
 
 struct Instruct {
-    RISC_V type = INVALID;
+    RISC_V type = RV_INVALID;
     int opcode = 0;
     int funct3 = 0;
     int funct7 = 0;

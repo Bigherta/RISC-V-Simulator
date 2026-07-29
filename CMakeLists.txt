@@ -9,8 +9,21 @@ add_executable(code
     src/CPU/CPU.cpp
     src/Decoder/Decoder.cpp
     src/Memory/Memory.cpp
+    src/ROB/ROB.cpp
 )
 
 target_include_directories(code PRIVATE src/include)
 
 set_target_properties(code PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+add_executable(cpu_test
+    src/CPU/CPU_test.cpp
+    src/CPU/CPU.cpp
+    src/Decoder/Decoder.cpp
+    src/Memory/Memory.cpp
+    src/ROB/ROB.cpp
+)
+
+target_include_directories(cpu_test PRIVATE src/include)
+
+set_target_properties(cpu_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build")

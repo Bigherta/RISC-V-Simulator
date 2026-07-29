@@ -83,7 +83,7 @@ Instruct Decoder::decode(int32_t raw_inst) {
     break;
   }
   default:
-    inst.type = INVALID;
+    inst.type = RV_INVALID;
     break;
   }
   return inst;

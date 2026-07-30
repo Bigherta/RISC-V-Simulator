@@ -5,33 +5,27 @@
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
+#include "ALU.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
 constexpr int INTEGERRS_CAP = 8;
 constexpr int STORERS_CAP = 4;
 constexpr int LOADRS_CAP = 4;
-struct CDB {
-  bool is_valid;
-  int32_t value;
-  int rob_mark;
-};
 struct systemState {
   Register reg[32];
   int RegisterTable[32];
   ReservationStation IntegerRS[8];
   ReservationStation StoreRS[4];
   ReservationStation LoadRS[4];
-  ROB CPUROB;
-  CDB commonDataBus;
+  ROB ROBModule;
+  ALU ALUModule;
   Memory InstructMem, DataMem;
   systemState() {
     std::memset(RegisterTable, 0xFF, sizeof(RegisterTable));
-    commonDataBus.is_valid = false;
   }
   systemState(Memory mem) : InstructMem(mem), DataMem(mem) {
     std::memset(RegisterTable, 0xFF, sizeof(RegisterTable));
-    commonDataBus.is_valid = false;
   }
   systemState(const systemState &other) {
     std::memcpy(reg, other.reg, sizeof(reg));
@@ -39,8 +33,8 @@ struct systemState {
     std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
     std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
     std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
-    CPUROB = other.CPUROB;
-    commonDataBus = other.commonDataBus;
+    ROBModule = other.ROBModule;
+    ALUModule = other.ALUModule;
     InstructMem = other.InstructMem;
     DataMem = other.DataMem;
   }
@@ -52,8 +46,8 @@ struct systemState {
     std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
     std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
     std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
-    CPUROB = other.CPUROB;
-    commonDataBus = other.commonDataBus;
+    ROBModule = other.ROBModule;
+    ALUModule = other.ALUModule;
     InstructMem = other.InstructMem;
     DataMem = other.DataMem;
     return *this;
@@ -78,7 +72,6 @@ public:
   // functions about execution
   static Op decodeOp(Instruct inst);
   void execute();
-  int32_t ALU(int32_t op1, int32_t op2, Op op);
   void load_n_bytes(int rd, int rs1, int imm, int n, bool isSigned);
   void store_n_bytes(int rs1, int rs2, int imm, int n);
   void apply_R_operation(Instruct inst);

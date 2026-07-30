@@ -26,10 +26,10 @@ struct ROBEntry {
 
 class ROB {
 private:
-  ROBEntry ROBqueue[65];
-  int head = 0;
-  int tail = 0;
-  inline static int ROB_Tag = 1;
+  ROBEntry ROBqueue[64];
+  uint8_t head = 0;
+  uint8_t tail = 0;
+  inline static uint64_t ROB_Tag = 1;
 public:
   bool isFull();
   int push(ROBEntry entry);

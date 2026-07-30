@@ -2,22 +2,22 @@
 #include <stdexcept>
 #include <string>
 
-bool ROB::isFull() { return (tail + 1) % 65 == head; }
+bool ROB::isFull() { return ((tail + 1) & 0x3F) == head; }
 
 int ROB::push(ROBEntry entry) {
-  tail = (tail + 1) % 65;
+  tail = (tail + 1) & 0x3F;
   entry.tag = ROB_Tag;
   ROBqueue[tail] = entry;
   return ROB_Tag++;
 }
 
 ROBEntry ROB::pop() {
-  auto temp = ROBqueue[(head + 1) % 65];
-  head = (head + 1) % 65;
+  auto temp = ROBqueue[(head + 1) & 0x3F];
+  head = (head + 1) & 0x3F;
   return temp;
 }
 
-ROBEntry ROB::peek() { return ROBqueue[(head + 1) % 65]; }
+ROBEntry ROB::peek() { return ROBqueue[(head + 1) & 0x3F]; }
 
 int ROB::getIndex(int Tag) {
   for (int i = 0; i < 65; i++) {

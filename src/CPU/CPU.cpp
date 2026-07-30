@@ -16,7 +16,7 @@ bool CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk) {
       break;
     }
   }
-  if (isFull || curCPUstate.CPUROB.isFull()) {
+  if (isFull || curCPUstate.ROBModule.isFull()) {
     return false;
   }
   ReservationStation IntegerRS;
@@ -35,16 +35,22 @@ bool CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk) {
       IntegerRS.vk = curCPUstate.reg[regNum2].read();
     }
   } else {
-    IntegerRS.qj = curCPUstate.RegisterTable[regNum1];
+    if (!rs1_ready)
+      IntegerRS.qj = curCPUstate.RegisterTable[regNum1];
+    else {
+      IntegerRS.vj = curCPUstate.reg[regNum1].read();
+    }
     if (imm_as_vk) {
       IntegerRS.vk = inst.imm;
-    } else {
+    } else if (!rs2_ready && has_rs2) {
       IntegerRS.qk = curCPUstate.RegisterTable[regNum2];
+    } else if (rs2_ready && has_rs2) {
+      IntegerRS.vk = curCPUstate.reg[regNum2].read();
     }
   }
   ROBEntry newROB(REGISTER);
   newROB.dest = destination;
-  newROB.tag = nextCPUstate.CPUROB.push(newROB);
+  newROB.tag = nextCPUstate.ROBModule.push(newROB);
   nextCPUstate.RegisterTable[destination] = newROB.tag;
   IntegerRS.ROB_dest = newROB.tag;
   for (int i = 0; i < INTEGERRS_CAP; i++) {
@@ -100,32 +106,6 @@ int CPU::issue() {
     break;
   }
   return -1;
-}
-int32_t CPU::ALU(int32_t op1, int32_t op2, Op op) {
-  switch (op) {
-  case ADD:
-    return op1 + op2;
-  case SUB:
-    return op1 - op2;
-  case XOR:
-    return op1 ^ op2;
-  case OR:
-    return op1 | op2;
-  case AND:
-    return op1 & op2;
-  case SL:
-    return static_cast<int32_t>(static_cast<uint32_t>(op1) << (op2 & 0x1F));
-  case SRL:
-    return static_cast<int32_t>(static_cast<uint32_t>(op1) >> (op2 & 0x1F));
-  case SRA:
-    return op1 >> (op2 & 0x1F);
-  case SLT:
-    return op1 < op2 ? 1 : 0;
-  case SLTU:
-    return static_cast<uint32_t>(op1) < static_cast<uint32_t>(op2) ? 1 : 0;
-  default:
-    return 0;
-  }
 }
 
 Op CPU::decodeOp(Instruct inst) {
@@ -198,18 +178,12 @@ void CPU::load_n_bytes(int rd, int rs1, int imm, int n, bool isSigned) {
       }
     }
   }
-  //   std::cout << "  load " << n << "B x" << std::dec << rd << " <- " <<
-  //   std::hex
-  //             << start_address << std::dec << std::endl;
   curCPUstate.reg[rd].write(result);
 }
 
 void CPU::store_n_bytes(int rs1, int rs2, int imm, int n) {
   uint32_t start_address = curCPUstate.reg[rs1].read() + imm;
   auto data = curCPUstate.reg[rs2].read();
-  //   std::cout << "  store " << n << "B x" << std::dec << rs2 << " -> " <<
-  //   std::hex
-  //             << start_address << std::dec << std::endl;
   for (int i = 0; i < n; i++) {
     auto byte_data = static_cast<uint8_t>(data >> (i << 3));
     curCPUstate.DataMem.write_data(start_address + i, byte_data);
@@ -218,82 +192,25 @@ void CPU::store_n_bytes(int rs1, int rs2, int imm, int n) {
 
 void CPU::apply_I_operation(Instruct inst) {
   auto opNum1 = curCPUstate.reg[inst.rs1].read();
-  if (inst.opcode == 0b0010011) {
+  if (inst.opcode == 0b0000011) {
     switch (inst.funct3) {
     case 0b000:
-      //       std::cout << "  addi x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1
-      //                 << ", " << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, ADD));
-      break; // addi
-    case 0b010:
-      //       std::cout << "  slti x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1
-      //                 << ", " << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, SLT));
-      break; // slti
-    case 0b011:
-      //       std::cout << "  sltiu x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1
-      //                 << ", " << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, SLTU));
-      break; // sltiu
-    case 0b100:
-      //       std::cout << "  xori x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1
-      //                 << ", " << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, XOR));
-      break; // xori
-    case 0b110:
-      //       std::cout << "  ori x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1 << ", "
-      //                 << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, OR));
-      break; // ori
-    case 0b111:
-      //       std::cout << "  andi x" << std::dec << inst.rd << ", x" <<
-      //       inst.rs1
-      //                 << ", " << inst.imm << std::endl;
-      curCPUstate.reg[inst.rd].write(ALU(opNum1, inst.imm, AND));
-      break; // andi
-    }
-  } else if (inst.opcode == 0b0000011) {
-    switch (inst.funct3) {
-    case 0b000:
-      //       std::cout << "  lb x" << std::dec << inst.rd << ", " << inst.imm
-      //       << "(x"
-      //                 << inst.rs1 << ")" << std::endl;
       load_n_bytes(inst.rd, inst.rs1, inst.imm, 1, true);
-      break; // lb
+      break;
     case 0b001:
-      //       std::cout << "  lh x" << std::dec << inst.rd << ", " << inst.imm
-      //       << "(x"
-      //                 << inst.rs1 << ")" << std::endl;
       load_n_bytes(inst.rd, inst.rs1, inst.imm, 2, true);
-      break; // lh
+      break;
     case 0b010:
-      //       std::cout << "  lw x" << std::dec << inst.rd << ", " << inst.imm
-      //       << "(x"
-      //                 << inst.rs1 << ")" << std::endl;
       load_n_bytes(inst.rd, inst.rs1, inst.imm, 4, false);
-      break; // lw
+      break;
     case 0b100:
-      //       std::cout << "  lbu x" << std::dec << inst.rd << ", " << inst.imm
-      //       << "(x"
-      //                 << inst.rs1 << ")" << std::endl;
       load_n_bytes(inst.rd, inst.rs1, inst.imm, 1, false);
-      break; // lbu
+      break;
     case 0b101:
-      //       std::cout << "  lhu x" << std::dec << inst.rd << ", " << inst.imm
-      //       << "(x"
-      //                 << inst.rs1 << ")" << std::endl;
       load_n_bytes(inst.rd, inst.rs1, inst.imm, 2, false);
-      break; // lhu
+      break;
     }
   } else if (inst.opcode == 0b1100111) {
-    //     std::cout << "  jalr x" << std::dec << inst.rd << ", x" << inst.rs1
-    //     << ", "
-    //               << inst.imm << std::endl;
     curCPUstate.reg[inst.rd].write(programCounter + 4);
     programCounter =
         static_cast<uint32_t>(curCPUstate.reg[inst.rs1].read() + inst.imm);
@@ -303,23 +220,14 @@ void CPU::apply_I_operation(Instruct inst) {
 void CPU::apply_S_operation(Instruct inst) {
   switch (inst.funct3) {
   case 0b000:
-    //     std::cout << "  sb x" << std::dec << inst.rs2 << ", " << inst.imm <<
-    //     "(x"
-    //               << inst.rs1 << ")" << std::endl;
     store_n_bytes(inst.rs1, inst.rs2, inst.imm, 1);
-    break; // sb
+    break;
   case 0b001:
-    //     std::cout << "  sh x" << std::dec << inst.rs2 << ", " << inst.imm <<
-    //     "(x"
-    //               << inst.rs1 << ")" << std::endl;
     store_n_bytes(inst.rs1, inst.rs2, inst.imm, 2);
-    break; // sh
+    break;
   case 0b010:
-    //     std::cout << "  sw x" << std::dec << inst.rs2 << ", " << inst.imm <<
-    //     "(x"
-    //               << inst.rs1 << ")" << std::endl;
     store_n_bytes(inst.rs1, inst.rs2, inst.imm, 4);
-    break; // sw
+    break;
   }
 }
 
@@ -329,77 +237,39 @@ void CPU::apply_B_operation(Instruct inst) {
   auto offset = inst.imm;
   switch (inst.funct3) {
   case 0b000:
-    //     std::cout << "  beq x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (opNum1 == opNum2) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // beq
+    break;
   case 0b001:
-    //     std::cout << "  bne x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (opNum1 != opNum2) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // bne
+    break;
   case 0b100:
-    //     std::cout << "  blt x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (opNum1 < opNum2) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // blt
+    break;
   case 0b101:
-    //     std::cout << "  bge x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (opNum1 >= opNum2) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // bge
+    break;
   case 0b110:
-    //     std::cout << "  bltu x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (static_cast<uint32_t>(opNum1) < static_cast<uint32_t>(opNum2)) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // bltu
+    break;
   case 0b111:
-    //     std::cout << "  bgeu x" << std::dec << inst.rs1 << ", x" << inst.rs2
-    //     << ", "
-    //               << offset;
     if (static_cast<uint32_t>(opNum1) >= static_cast<uint32_t>(opNum2)) {
-      //       std::cout << " [taken]" << std::endl;
       programCounter += offset;
-    } else {
-      //       std::cout << " [not taken]" << std::endl;
     }
-    break; // bgeu
+    break;
   }
 }
 
 void CPU::apply_J_operation(Instruct inst) {
-  //   std::cout << "  jal x" << std::dec << inst.rd << ", " << inst.imm
-  //             << std::endl;
   curCPUstate.reg[inst.rd].write(programCounter + 4);
   programCounter += inst.imm;
 }
@@ -407,25 +277,24 @@ void CPU::apply_J_operation(Instruct inst) {
 void CPU::apply_U_operation(Instruct inst) {
   switch (inst.opcode) {
   case 0b0010111:
-    //     std::cout << "  auipc x" << std::dec << inst.rd << ", 0x" << std::hex
-    //               << inst.imm << std::dec << std::endl;
     curCPUstate.reg[inst.rd].write(programCounter + inst.imm);
     break;
   case 0b0110111:
-    //     std::cout << "  lui x" << std::dec << inst.rd << ", 0x" << std::hex
-    //               << inst.imm << std::dec << std::endl;
     curCPUstate.reg[inst.rd].write(inst.imm);
     break;
   }
 }
 
 void CPU::execute() {
+  if (nextCPUstate.ALUModule.isFull()) {
+    return;
+  }
   int Execute_IntegerRS_index;
   ReservationStation Execute_IntegerRS(OP_INVALID);
   Execute_IntegerRS.ROB_dest = ~0u >> 1;
   for (int i = 0; i < INTEGERRS_CAP; ++i) {
     auto rs = curCPUstate.IntegerRS[i];
-    if (rs.qj == -1 && rs.qk == -1) {
+    if (!rs.free && rs.qj == -1 && rs.qk == -1) {
       if (rs.ROB_dest < Execute_IntegerRS.ROB_dest) {
         Execute_IntegerRS = rs;
         Execute_IntegerRS_index = i;
@@ -435,17 +304,18 @@ void CPU::execute() {
   if (Execute_IntegerRS.op == OP_INVALID) {
     return;
   }
-  auto result =
-      ALU(Execute_IntegerRS.vj, Execute_IntegerRS.vk, Execute_IntegerRS.op);
+  nextCPUstate.ALUModule.ALUExecute(Execute_IntegerRS.vj, Execute_IntegerRS.vk,
+                                    Execute_IntegerRS.op,
+                                    Execute_IntegerRS.ROB_dest);
   nextCPUstate.IntegerRS[Execute_IntegerRS_index].free = true;
-  nextCPUstate.commonDataBus = {true, result, Execute_IntegerRS.ROB_dest};
 }
 
 void CPU::writeBack() {
-  if (!curCPUstate.commonDataBus.is_valid)
+  if (curCPUstate.ALUModule.isEmpty())
     return;
-  auto tag = curCPUstate.commonDataBus.rob_mark;
-  auto value = curCPUstate.commonDataBus.value;
+  auto result = curCPUstate.ALUModule.pop();
+  auto tag = result.robTag;
+  auto value = result.value;
   for (int i = 0; i < INTEGERRS_CAP; i++) {
     if (curCPUstate.IntegerRS[i].qj == tag) {
       nextCPUstate.IntegerRS[i].vj = value;
@@ -456,13 +326,14 @@ void CPU::writeBack() {
       nextCPUstate.IntegerRS[i].qk = -1;
     }
   }
-  nextCPUstate.CPUROB.writeROB(value, curCPUstate.CPUROB.getIndex(tag), Ready);
+  nextCPUstate.ROBModule.writeROB(value, curCPUstate.ROBModule.getIndex(tag),
+                                  Ready);
 }
 
 void CPU::commit() {
-  if (nextCPUstate.CPUROB.peek().state != Ready)
+  if (nextCPUstate.ROBModule.peek().state != Ready)
     return;
-  auto rob_entry = nextCPUstate.CPUROB.pop();
+  auto rob_entry = nextCPUstate.ROBModule.pop();
   nextCPUstate.reg[rob_entry.dest].write(rob_entry.value);
 }
 
@@ -479,7 +350,7 @@ void CPU::run() {
     auto old_pc = programCounter;
     if (programCounter == old_pc && PCWriteEnable)
       programCounter += 4;
-    curCPUstate.reg[0].write(0);
+    nextCPUstate.reg[0].write(0);
     if (finish) {
       std::cout << std::dec << (curCPUstate.reg[result].read() & 0xFF)
                 << std::endl;

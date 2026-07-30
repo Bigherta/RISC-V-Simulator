@@ -10,7 +10,7 @@ struct ReservationStation {
   int32_t vk;
   int qj = -1;
   int qk = -1;
-  int ROB_dest;
+  int ROB_dest = ~0u >> 1;
   ReservationStation() : free(true) {}
   ReservationStation(Op type) : op(type), free(true) {}
 };

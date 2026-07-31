@@ -2,27 +2,36 @@
 #include <stdexcept>
 #include <string>
 
-bool ROB::isFull() { return ((tail + 1) & 0x3F) == head; }
+bool ROB::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
 int ROB::push(ROBEntry entry) {
-  tail = (tail + 1) & 0x3F;
   entry.tag = ROB_Tag;
   ROBqueue[tail] = entry;
+  tail = (tail + 1) & 0x3F;
   return ROB_Tag++;
 }
 
 ROBEntry ROB::pop() {
-  auto temp = ROBqueue[(head + 1) & 0x3F];
+  auto temp = ROBqueue[head];
   head = (head + 1) & 0x3F;
   return temp;
 }
 
-ROBEntry ROB::peek() { return ROBqueue[(head + 1) & 0x3F]; }
+ROBEntry ROB::peek() const { return ROBqueue[head]; }
 
-int ROB::getIndex(int Tag) {
-  for (int i = 0; i < 65; i++) {
+int ROB::getIndex(int Tag) const {
+  for (int i = head; i != tail; i = (i + 1) & 0x3F) {
     if (ROBqueue[i].tag == Tag) {
       return i;
+    }
+  }
+  throw std::runtime_error("No finding Tag " + std::to_string(Tag));
+}
+
+ROBEntry ROB::getEntry(int Tag) const {
+  for (int i = head; i != tail; i = (i + 1) & 0x3F) {
+    if (ROBqueue[i].tag == Tag) {
+      return ROBqueue[i];
     }
   }
   throw std::runtime_error("No finding Tag " + std::to_string(Tag));

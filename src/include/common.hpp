@@ -2,7 +2,12 @@
 #ifndef COMMON_HPP
 #define COMMON_HPP
 #include <cstdint>
-enum Op {
+constexpr int INTEGERRS_CAP = 8;
+constexpr int STORERS_CAP = 4;
+constexpr int LOADRS_CAP = 4;
+constexpr int LSQ_CAP = 64;
+constexpr int ROB_CAP = 64;
+enum class Operation {
   ADD,
   SUB,
   AND,
@@ -13,10 +18,16 @@ enum Op {
   SRA,
   SLT,
   SLTU,
+  AUIPC,
+  LUI,
+  Load,
+  Store,
   OP_INVALID,
 };
-
-enum RISC_V {
+constexpr bool isMemoryOp(Operation op) {
+  return op == Operation::Load || op == Operation::Store;
+}
+enum class RISC_V {
   R,
   I,
   Istar,
@@ -28,7 +39,7 @@ enum RISC_V {
 };
 
 struct Instruct {
-  RISC_V type = RV_INVALID;
+  RISC_V type = RISC_V::RV_INVALID;
   int opcode = 0;
   int funct3 = 0;
   int funct7 = 0;
@@ -41,5 +52,23 @@ struct Instruct {
 struct ExecuteResult {
   int32_t value;
   int robTag;
+  bool isAddress;
 };
+
+struct CDBInfo {
+  uint8_t index;
+  bool busy;
+  ExecuteResult result;
+};
+
+struct MemRequest {
+  Operation op;
+  int remainCycle = 3;
+  int32_t value;
+  uint32_t address;
+  bool isSigned;
+  int n_bytes;
+  int ROBTag;
+};
+
 #endif // COMMON_HPP

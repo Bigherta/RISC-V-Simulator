@@ -9,10 +9,11 @@ private:
   uint8_t head = 0;
   uint8_t tail = 0;
 public:
-  bool isFull();
-  bool isEmpty();
-  void ALUExecute(int32_t op1, int32_t op2, Op op, int ROBTag);
+  bool isFull() const;
+  bool isEmpty() const;
+  void ALUExecute(int32_t op1, int32_t op2, Operation op, int ROBTag);
   void push(ExecuteResult);
   ExecuteResult pop();
+  ExecuteResult peek() const;
 };
 #endif

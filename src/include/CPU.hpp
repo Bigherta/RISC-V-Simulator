@@ -1,55 +1,65 @@
 #pragma once
+#include "CDB.hpp"
 #ifndef CPU_HPP
 #define CPU_HPP
+#include "ALU.hpp"
+#include "LSQ.hpp"
 #include "Memory.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
-#include "ALU.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
-constexpr int INTEGERRS_CAP = 8;
-constexpr int STORERS_CAP = 4;
-constexpr int LOADRS_CAP = 4;
+
 struct systemState {
-  Register reg[32];
-  int RegisterTable[32];
   ReservationStation IntegerRS[8];
   ReservationStation StoreRS[4];
+  StoreMicroReservationStation MicroStoreRS[4];
   ReservationStation LoadRS[4];
+  RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
+  LSQ LSQModule;
+  CDB CDBModule;
   Memory InstructMem, DataMem;
-  systemState() {
-    std::memset(RegisterTable, 0xFF, sizeof(RegisterTable));
-  }
-  systemState(Memory mem) : InstructMem(mem), DataMem(mem) {
-    std::memset(RegisterTable, 0xFF, sizeof(RegisterTable));
-  }
+  uint32_t programCounter;
+  bool PCWriteEnable;
+
+  systemState() : programCounter(0), PCWriteEnable(false) {}
+  systemState(Memory mem)
+      : InstructMem(mem), DataMem(mem), programCounter(0), PCWriteEnable(false) {}
   systemState(const systemState &other) {
-    std::memcpy(reg, other.reg, sizeof(reg));
-    std::memcpy(RegisterTable, other.RegisterTable, sizeof(RegisterTable));
     std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
     std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
+    std::memcpy(MicroStoreRS, other.MicroStoreRS, sizeof(MicroStoreRS));
     std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
     ROBModule = other.ROBModule;
     ALUModule = other.ALUModule;
+    LSQModule = other.LSQModule;
+    CDBModule = other.CDBModule;
+    REGModule = other.REGModule;
     InstructMem = other.InstructMem;
     DataMem = other.DataMem;
+    programCounter = other.programCounter;
+    PCWriteEnable = other.PCWriteEnable;
   }
   systemState &operator=(const systemState &other) {
     if (this == &other)
       return *this;
-    std::memcpy(reg, other.reg, sizeof(reg));
-    std::memcpy(RegisterTable, other.RegisterTable, sizeof(RegisterTable));
     std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
     std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
+    std::memcpy(MicroStoreRS, other.MicroStoreRS, sizeof(MicroStoreRS));
     std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
     ROBModule = other.ROBModule;
     ALUModule = other.ALUModule;
+    LSQModule = other.LSQModule;
+    CDBModule = other.CDBModule;
+    REGModule = other.REGModule;
     InstructMem = other.InstructMem;
     DataMem = other.DataMem;
+    programCounter = other.programCounter;
+    PCWriteEnable = other.PCWriteEnable;
     return *this;
   }
 };
@@ -58,36 +68,23 @@ class CPU {
 private:
   systemState curCPUstate;
   systemState nextCPUstate;
-  uint32_t programCounter;
-  bool PCWriteEnable;
-
-  friend void run_ALU_tomasulo_tests();
+  friend struct CPU_Tester;
+  friend struct ReorderTester;
 
 public:
   CPU(Memory mem);
-  // functions about issue
   int issue();
   bool issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk);
-
-  // functions about execution
-  static Op decodeOp(Instruct inst);
+  bool issue_IntegerU(Instruct inst, bool has_PC);
+  bool issue_Load(Instruct inst, int n_bytes, bool isUnsigned);
+  bool issue_Store(Instruct inst, int n_bytes);
+  static Operation decodeOp(Instruct inst);
   void execute();
-  void load_n_bytes(int rd, int rs1, int imm, int n, bool isSigned);
-  void store_n_bytes(int rs1, int rs2, int imm, int n);
-  void apply_R_operation(Instruct inst);
-  void apply_I_operation(Instruct inst);
-  void apply_Istar_operation(Instruct inst);
-  void apply_S_operation(Instruct inst);
   void apply_B_operation(Instruct inst);
   void apply_J_operation(Instruct inst);
   void apply_U_operation(Instruct inst);
-
-  // functions about write result
   void writeBack();
-
-  // functions about commit
   void commit();
-
   void run();
 };
 

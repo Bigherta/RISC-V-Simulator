@@ -1,5 +1,4 @@
 #pragma once
-#include "CDB.hpp"
 #ifndef CPU_HPP
 #define CPU_HPP
 #include "ALU.hpp"
@@ -22,7 +21,6 @@ struct systemState {
   ALU ALUModule;
   BRU BRUModule;
   LSQ LSQModule;
-  CDB CDBModule;
   INQ INQModule;
   Memory DataMem;
   FlushArbiter flushArbiter;
@@ -52,10 +50,10 @@ private:
   ALU ALUModule;
   BRU BRUModule;
   LSQ LSQModule;
-  CDB CDBModule;
   INQ INQModule;
   Memory DataMem;
   FlushArbiter flushArbiter;
+  CDBOutput cdbArbiter;
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;

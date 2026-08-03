@@ -12,7 +12,6 @@ set(CPU_SOURCES
     src/ALU/ALU.cpp
     src/BRU/BRU.cpp
     src/LSQ/LSQ.cpp
-    src/CDB/CDB.cpp
     src/Register/Register.cpp
     src/INQ/INQ.cpp
 )

@@ -746,21 +746,7 @@ void CPU::writeBack() {
     CPUstate.BRUModule.pop();
   }
 
-  bool aluValid = !ALUModule.isEmpty();
-  ExecuteResult aluResult = aluValid ? ALUModule.peek() : ExecuteResult{};
-
-  auto lsqCDBDetect = LSQModule.CDBDetect();
-  bool lsqValid = lsqCDBDetect != -1;
-  ExecuteResult lsqResult{};
-  if (lsqValid) {
-    auto lsqEntry = LSQModule.getEntry(lsqCDBDetect);
-    lsqResult.isAddress = false;
-    lsqResult.robTag = lsqEntry.ROBTag;
-    lsqResult.value = lsqEntry.value;
-  }
-
-  CDBOutput cdbOut =
-      CDBModule.arbitrate(aluResult, aluValid, lsqResult, lsqValid);
+  CDBOutput cdbOut = cdbArbiter;
   if (!cdbOut.valid) {
     if (BranchSquash.needSquash) {
       CPUstate.flushArbiter.receive(BranchSquash);
@@ -788,8 +774,10 @@ void CPU::writeBack() {
     if (index != -1) {
       CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
     }
-    if (cdbOut.lsqGranted && lsqCDBDetect != -1) {
-      CPUstate.LSQModule.setCDBBroadcast(lsqCDBDetect);
+    if (cdbOut.lsqGranted) {
+      auto lsqIndex = LSQModule.getIndex(tag);
+      if (lsqIndex >= 0)
+        CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
     }
   } else if (isAddress) {
     auto value = cdbOut.result.value;
@@ -855,7 +843,6 @@ void CPU::read() {
   ALUModule = CPUstate.ALUModule;
   BRUModule = CPUstate.BRUModule;
   LSQModule = CPUstate.LSQModule;
-  CDBModule = CPUstate.CDBModule;
   INQModule = CPUstate.INQModule;
   DataMem.snapshotFrom(CPUstate.DataMem);
   programCounter = CPUstate.programCounter;
@@ -864,6 +851,7 @@ void CPU::read() {
   haltRd = CPUstate.haltRd;
   flushArbiter = CPUstate.flushArbiter;
   squashDetect = CPUstate.flushArbiter.arbitResult();
+  cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
 }
 void CPU::flush() {
   if (squashDetect.needSquash) {

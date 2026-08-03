@@ -108,4 +108,11 @@ struct SquashInfo {
   int SquashTag = -1;
   uint32_t SquashPC = 0;
 };
+
+struct CDBOutput {
+  ExecuteResult result;
+  bool valid;
+  bool aluGranted;
+  bool lsqGranted;
+};
 #endif // COMMON_HPP

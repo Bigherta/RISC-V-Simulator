@@ -2,6 +2,8 @@
 #include <cstring>
 #ifndef ARBITER_HPP
 #define ARBITER_HPP
+#include "ALU.hpp"
+#include "LSQ.hpp"
 #include "common.hpp"
 #include <stdexcept>
 class RATSEL {
@@ -62,6 +64,60 @@ public:
         }
       }
     }
+  }
+};
+
+class CDBArbiter {
+public:
+  static CDBOutput arbitrate(const ALU &ALUModule, const LSQ &LSQModule,
+                             const SquashInfo &squash) {
+    bool needSquash = squash.needSquash;
+    int squashTag = squash.SquashTag;
+    bool aluValid = !ALUModule.isEmpty();
+    ExecuteResult aluResult = aluValid ? ALUModule.peek() : ExecuteResult{};
+    if (aluValid && needSquash && aluResult.robTag > squashTag)
+      aluValid = false;
+
+    auto lsqCDBDetect = LSQModule.CDBDetect();
+    bool lsqValid = lsqCDBDetect != -1;
+    ExecuteResult lsqResult{};
+    if (lsqValid) {
+      auto lsqEntry = LSQModule.getEntry(lsqCDBDetect);
+      lsqResult.isAddress = false;
+      lsqResult.robTag = lsqEntry.ROBTag;
+      lsqResult.value = lsqEntry.value;
+      if (needSquash && lsqEntry.ROBTag > squashTag)
+        lsqValid = false;
+    }
+    CDBOutput out = {{0, 0, false}, false, false, false};
+
+    if (!aluValid && !lsqValid)
+      return out;
+
+    if (aluValid && !lsqValid) {
+      out.result = aluResult;
+      out.valid = true;
+      out.aluGranted = true;
+      return out;
+    }
+
+    if (!aluValid && lsqValid) {
+      out.result = lsqResult;
+      out.valid = true;
+      out.lsqGranted = true;
+      return out;
+    }
+
+    if (aluResult.robTag <= lsqResult.robTag) {
+      out.result = aluResult;
+      out.valid = true;
+      out.aluGranted = true;
+    } else {
+      out.result = lsqResult;
+      out.valid = true;
+      out.lsqGranted = true;
+    }
+    return out;
   }
 };
 #endif // ARBITER_HPP

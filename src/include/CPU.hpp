@@ -24,7 +24,7 @@ struct systemState {
   LSQ LSQModule;
   CDB CDBModule;
   INQ INQModule;
-  Memory InstructMem, DataMem;
+  Memory DataMem;
   FlushArbiter flushArbiter;
   uint32_t programCounter;
   SquashInfo squashDetect;
@@ -33,14 +33,13 @@ struct systemState {
   int haltRd = -1;
 
   systemState() : programCounter(0) {}
-  systemState(Memory mem)
-      : InstructMem(mem), DataMem(mem), programCounter(0) {
-  }
+  systemState(Memory mem) : DataMem(mem), programCounter(0) {}
 };
 
 class CPU {
 private:
   systemState CPUstate;
+  Memory InstructMem;
   friend struct CPU_Tester;
   friend struct ReorderTester;
   friend struct Reorder720Tester;
@@ -55,7 +54,7 @@ private:
   LSQ LSQModule;
   CDB CDBModule;
   INQ INQModule;
-  Memory InstructMem, DataMem;
+  Memory DataMem;
   FlushArbiter flushArbiter;
   uint32_t programCounter;
   SquashInfo squashDetect;

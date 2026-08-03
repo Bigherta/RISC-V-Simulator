@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <iostream>
 
-CPU::CPU(Memory mem) : CPUstate(mem) {}
+CPU::CPU(Memory mem) : CPUstate(mem), InstructMem(mem), DataMem(mem) {}
 
 void CPU::fetch() {
   if (squashDetect.needSquash) {
@@ -225,7 +225,7 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
 }
 
 IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
-  
+
   if (RSModule.isStoreRSFull() || RSModule.isMicroStoreRSFull() ||
       ROBModule.isFull() || LSQModule.isFull()) {
     return {false, 0, -1};
@@ -857,8 +857,7 @@ void CPU::read() {
   LSQModule = CPUstate.LSQModule;
   CDBModule = CPUstate.CDBModule;
   INQModule = CPUstate.INQModule;
-  InstructMem = CPUstate.InstructMem;
-  DataMem = CPUstate.DataMem;
+  DataMem.snapshotFrom(CPUstate.DataMem);
   programCounter = CPUstate.programCounter;
   haltFetched = CPUstate.haltFetched;
   haltCommitted = CPUstate.haltCommitted;

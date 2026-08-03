@@ -26,8 +26,8 @@ public:
   Instruct pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
-  uint8_t decodeDetect() const;
-  void decode(uint8_t index);
+  int decodeDetect() const;
+  void decode(int index);
   void clear();
   bool headDecoded() const;
   void decodeAll();

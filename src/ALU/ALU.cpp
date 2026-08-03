@@ -64,7 +64,7 @@ bool ALU::isEmpty() const { return tail == head; }
 
 void ALU::flush(int tag) {
   int first_flushed = -1;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+  for (int cur = head; cur != tail; cur = (cur + 1) & 0b11) {
     if (outputBuffer[cur].robTag > tag) {
       if (first_flushed == -1)
         first_flushed = cur;

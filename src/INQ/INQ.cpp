@@ -31,7 +31,7 @@ uint8_t INQ::getHead() const { return head; }
 
 uint8_t INQ::getTail() const { return tail; }
 
-uint8_t INQ::decodeDetect() const {
+int INQ::decodeDetect() const {
   if (isEmpty())
     return -1;
   for (int i = head; i != tail; i = (i + 1) & (INQ_CAP - 1)) {
@@ -42,7 +42,7 @@ uint8_t INQ::decodeDetect() const {
   return -1;
 }
 
-void INQ::decode(uint8_t index) {
+void INQ::decode(int index) {
   INQqueue[index].ninst = Decoder::decode(INQqueue[index].raw);
   INQqueue[index].ninst.pc = INQqueue[index].pc;
   INQqueue[index].decoded = true;

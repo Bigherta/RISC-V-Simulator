@@ -1,5 +1,4 @@
 #include "../include/CPU.hpp"
-#include "../include/util.hpp"
 #include <cstdint>
 #include <iostream>
 
@@ -65,9 +64,6 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
       IntegerRS.qj = op1.robTag;
     }
   }
-  DPRINT(TOPIC_ISSUE, "ISSUE int rs1=%d ready=%d v=%d q=%d\n", regNum1,
-         op1.ready, op1.value, op1.robTag);
-
   if (imm_as_vk) {
     IntegerRS.vk = inst.imm;
   } else if (has_rs2) {
@@ -229,7 +225,7 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
 }
 
 IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
-  DPRINT(TOPIC_ISSUE, "ISSUE store rs2=%d imm=%d\n", inst.rs2, inst.imm);
+  
   if (RSModule.isStoreRSFull() || RSModule.isMicroStoreRSFull() ||
       ROBModule.isFull() || LSQModule.isFull()) {
     return {false, 0, -1};
@@ -259,17 +255,13 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   auto op2 = REGModule.readOperand(regNum2);
   if (op2.ready) {
     MicroRS.vrs2 = op2.value;
-    DPRINT(TOPIC_ISSUE, "ISSUE store rs2 ready v=%d\n", op2.value);
   } else {
     auto op2Index = ROBModule.getIndex(op2.robTag);
     if (op2Index != -1 &&
         (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
       MicroRS.vrs2 = ROBModule.getEntry(op2Index).value;
-      DPRINT(TOPIC_ISSUE, "ISSUE store rs2 rob ready v=%d\n",
-             ROBModule.getEntry(op2Index).value);
     } else {
       MicroRS.qrs2 = op2.robTag;
-      DPRINT(TOPIC_ISSUE, "ISSUE store rs2 tag q=%d\n", op2.robTag);
     }
   }
 
@@ -515,7 +507,6 @@ Operation CPU::decodeOp(Instruct inst) {
 }
 
 void CPU::execute() {
-  DPRINT(TOPIC_EXEC, "EXEC: ALUempty=%d\n", ALUModule.isEmpty());
   // ALU execute
   if (!ALUModule.isFull()) {
     int Execute_RS_index = 0xFFFFFFFF;
@@ -589,8 +580,6 @@ void CPU::execute() {
          (squashDetect.needSquash &&
           RSModule.MicroStoreRS[i].ROB_dest < squashDetect.SquashTag))) {
       auto index = LSQModule.getIndex(RSModule.MicroStoreRS[i].ROB_dest);
-      DPRINT(TOPIC_EXEC, "EXEC microRS->LSQ idx=%d v=%d\n", index,
-             RSModule.MicroStoreRS[i].vrs2);
       CPUstate.LSQModule.writeValue(RSModule.MicroStoreRS[i].vrs2, index);
       CPUstate.LSQModule.DataBroadcast(index);
       CPUstate.RSModule.MicroStoreRS[i].free = true;
@@ -616,10 +605,6 @@ void CPU::execute() {
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash &&
            Execute_RS.ROB_dest < squashDetect.SquashTag)) {
-        DPRINT(TOPIC_EXEC,
-               "EXEC BRUexec idx=%d rob=%d vj=%d vk=%d pc=%d imm=%d\n",
-               Execute_RS_index, Execute_RS.ROB_dest, Execute_RS.vj,
-               Execute_RS.vk, Execute_RS.pc, Execute_RS.imm);
         CPUstate.BRUModule.BRUExecute(Execute_RS.vj, Execute_RS.vk,
                                       Execute_RS.pc, Execute_RS.imm,
                                       Execute_RS.op, Execute_RS.ROB_dest);
@@ -671,8 +656,6 @@ void CPU::execute() {
   for (int i = LSQModule.getHead(); i != LSQModule.getTail();
        i = (i + 1) & 0x3F) {
     auto e = LSQModule.getEntry(i);
-    DPRINT(TOPIC_LSQ, "EXEC checkLSQ idx=%d robTag=%d addrR=%d valSt=%d\n", i,
-           e.ROBTag, e.isAddressReady, (int)e.valueState);
     if (LSQModule.isReadyToCommit(i)) {
       auto lsqEntry = LSQModule.getEntry(i);
       if (!squashDetect.needSquash ||
@@ -691,12 +674,10 @@ void CPU::execute() {
 void CPU::CDBBroadcast(int tag, int value) {
   for (int i = 0; i < INTEGERRS_CAP; i++) {
     if (RSModule.IntegerRS[i].qj == tag) {
-      DPRINT(TOPIC_WB, "WB res int[%d] qj=%d->v=%d\n", i, tag, value);
       CPUstate.RSModule.IntegerRS[i].vj = value;
       CPUstate.RSModule.IntegerRS[i].qj = -1;
     }
     if (RSModule.IntegerRS[i].qk == tag) {
-      DPRINT(TOPIC_WB, "WB res int[%d] qk=%d->v=%d\n", i, tag, value);
       CPUstate.RSModule.IntegerRS[i].vk = value;
       CPUstate.RSModule.IntegerRS[i].qk = -1;
     }
@@ -719,7 +700,6 @@ void CPU::CDBBroadcast(int tag, int value) {
   }
   for (int i = 0; i < STORERS_CAP; i++) {
     if (RSModule.MicroStoreRS[i].qrs2 == tag) {
-      DPRINT(TOPIC_WB, "WB resolve microRS[%d] v=%d\n", i, value);
       CPUstate.RSModule.MicroStoreRS[i].vrs2 = value;
       CPUstate.RSModule.MicroStoreRS[i].qrs2 = -1;
     }
@@ -739,8 +719,6 @@ void CPU::CDBBroadcast(int tag, int value) {
 void CPU::writeBack() {
   if (DataMem.isReady()) {
     auto reply = DataMem.MemReturn();
-    DPRINT(TOPIC_MEM, "WB memReturn op=%d tag=%d val=%d\n", (int)reply.op,
-           reply.ROBTag, reply.value);
     if (reply.op == Operation::Load &&
         (!squashDetect.needSquash ||
          (squashDetect.needSquash && reply.ROBTag < squashDetect.SquashTag))) {
@@ -783,11 +761,6 @@ void CPU::writeBack() {
 
   CDBOutput cdbOut =
       CDBModule.arbitrate(aluResult, aluValid, lsqResult, lsqValid);
-
-  DPRINT(TOPIC_WB, "WB bcast tag=%d val=%d isAddr=%d isCtl=%d\n",
-         cdbOut.result.robTag, cdbOut.result.value, cdbOut.result.isAddress,
-         cdbOut.result.isControl);
-
   if (!cdbOut.valid) {
     if (BranchSquash.needSquash) {
       CPUstate.flushArbiter.receive(BranchSquash);
@@ -863,8 +836,6 @@ void CPU::commit() {
     return;
   auto rob_entry = ROBModule.peek();
   rob_entry = CPUstate.ROBModule.pop();
-  DPRINT(TOPIC_COMMIT, "COMMIT tag=%d type=%d val=%d dest=%d\n", rob_entry.tag,
-         (int)rob_entry.type, rob_entry.value, rob_entry.dest);
   if (rob_entry.halt) {
     CPUstate.haltCommitted = true;
     CPUstate.haltRd = rob_entry.dest;

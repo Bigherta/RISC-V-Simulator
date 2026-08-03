@@ -976,5 +976,4 @@ void CPU::run() {
     finish = haltCommitted && INQModule.isEmpty() && ROBModule.isEmpty();
   }
   std::cout << std::dec << (REGModule.readReg(haltRd) & 0xFF) << std::endl;
-  std::cout << "Clock cycles: " << clock << std::endl;
 }

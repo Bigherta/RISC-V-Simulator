@@ -24,4 +24,3 @@ add_executable(code
 )
 
 target_include_directories(code PRIVATE src/include)
-set_target_properties(code PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")

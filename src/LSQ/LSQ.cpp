@@ -167,9 +167,23 @@ int LSQ::LoadDetect() {
       // Load with known address, value not yet dispatched to memory
       if (hasUnknownStore)
         break;
-      // Try to forward from older stores before dispatching to memory
-      AddressBroadcast(cur);
       if (LSQqueue[cur].valueState == ValueState::NOTREADY) {
+        // An older same-address store whose value is still pending would
+        // overwrite this load later (via its DataBroadcast); dispatching to
+        // memory now could read a stale value. Wait for the forwarding.
+        bool hasPendingSameAddrStore = false;
+        for (int i = (cur + 63) & 0x3F; i != ((head - 1) & 0x3F);
+             i = (i + 63) & 0x3F) {
+          if (LSQqueue[i].type == Operation::Store &&
+              LSQqueue[i].isAddressReady &&
+              LSQqueue[i].address == LSQqueue[cur].address &&
+              LSQqueue[i].valueState != ValueState::READY) {
+            hasPendingSameAddrStore = true;
+            break;
+          }
+        }
+        if (hasPendingSameAddrStore)
+          break;
         // Still not resolved — must go to memory
         return cur;
       }

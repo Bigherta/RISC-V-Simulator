@@ -1,0 +1,65 @@
+#pragma once
+#ifndef UTIL_HPP
+#define UTIL_HPP
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace debug {
+
+enum Topic : unsigned {
+  TOPIC_NONE = 0,
+  TOPIC_ISSUE = 1u << 0,
+  TOPIC_EXEC = 1u << 1,
+  TOPIC_WB = 1u << 2,
+  TOPIC_COMMIT = 1u << 3,
+  TOPIC_LSQ = 1u << 4,
+  TOPIC_MEM = 1u << 5,
+  TOPIC_ALL = 0xFFFFFFFFu,
+};
+
+static unsigned parseVerbose(const char *env) {
+  if (env == nullptr || env[0] == '\0' || env[0] == '0')
+    return TOPIC_NONE;
+  if (strcmp(env, "1") == 0 || strcmp(env, "all") == 0)
+    return TOPIC_ALL;
+  unsigned mask = TOPIC_NONE;
+  const char *p = env;
+  while (true) {
+    const char *end = strchr(p, ',');
+    int len = end ? (int)(end - p) : (int)strlen(p);
+    if (len == 5 && strncmp(p, "issue", 5) == 0)
+      mask |= TOPIC_ISSUE;
+    else if (len == 4 && strncmp(p, "exec", 4) == 0)
+      mask |= TOPIC_EXEC;
+    else if (len == 2 && strncmp(p, "wb", 2) == 0)
+      mask |= TOPIC_WB;
+    else if (len == 6 && strncmp(p, "commit", 6) == 0)
+      mask |= TOPIC_COMMIT;
+    else if (len == 3 && strncmp(p, "lsq", 3) == 0)
+      mask |= TOPIC_LSQ;
+    else if (len == 3 && strncmp(p, "mem", 3) == 0)
+      mask |= TOPIC_MEM;
+    if (end == nullptr)
+      break;
+    p = end + 1;
+  }
+  return mask;
+}
+
+bool enabled(Topic topic) {
+  static const unsigned mask = parseVerbose(std::getenv("VERBOSE"));
+  return (mask & topic) != 0;
+}
+
+void print(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+}
+
+} // namespace debug
+
+#endif // UTIL_HPP

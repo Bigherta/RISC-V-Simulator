@@ -1,4 +1,5 @@
 #include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <cstdint>
 #include <iostream>
 
@@ -666,6 +667,9 @@ void CPU::execute() {
       newRequest.op = Operation::Store;
       newRequest.ROBTag = storeEntry.ROBTag;
       if (CPUstate.DataMem.MemPush(newRequest)) {
+        if (debug::enabled(debug::TOPIC_MEM))
+          debug::print("MEM store @%u <- %d\n", newRequest.address,
+                       newRequest.value);
         CPUstate.LSQModule.pop();
         memBusy = true;
       }
@@ -769,8 +773,11 @@ void CPU::writeBack() {
         (!squashDetect.needSquash ||
          (squashDetect.needSquash && reply.ROBTag < squashDetect.SquashTag))) {
       auto index = LSQModule.getIndex(reply.ROBTag);
-      if (index >= 0)
+      if (index >= 0) {
+        if (debug::enabled(debug::TOPIC_MEM))
+          debug::print("MEM load @%u <- %d\n", reply.address, reply.value);
         CPUstate.LSQModule.writeValue(reply.value, index);
+      }
     }
     CPUstate.DataMem.MemPull();
   }
@@ -866,6 +873,17 @@ void CPU::commit() {
     CPUstate.ROBModule.flush(squashDetect.SquashTag);
     return;
   }
+  uint8_t cur = LSQModule.getHead();
+  while (cur != LSQModule.getTail()) {
+    LSQEntry e = LSQModule.getEntry(cur);
+    if (e.type == Operation::Load && ROBModule.getIndex(e.ROBTag) == -1 &&
+        e.isCDBBroadcast) {
+      CPUstate.LSQModule.pop();
+      cur = (cur + 1) & 0x3F;
+    } else {
+      break;
+    }
+  }
   if (ROBModule.isEmpty() || ROBModule.headState() != ROBState::CommitReady)
     return;
   auto rob_entry = ROBModule.peek();
@@ -876,10 +894,6 @@ void CPU::commit() {
   } else if (rob_entry.type == ROBType::REGISTER ||
              rob_entry.type == ROBType::LINK) {
     CPUstate.REGModule.writeReg(rob_entry.dest, rob_entry.value);
-  }
-  if (rob_entry.type != ROBType::STORE && !LSQModule.isEmpty() &&
-      LSQModule.peek().ROBTag == rob_entry.tag) {
-    CPUstate.LSQModule.pop();
   }
 }
 void CPU::read() {

@@ -7,12 +7,13 @@ enum class ROBType {
   REGISTER,
   BRANCH,
   STORE,
+  LINK,
 };
 
 enum class ROBState {
   Waiting,
-  Executing,
-  Ready,
+  ValueReady,
+  CommitReady,
 };
 
 struct ROBEntry {
@@ -20,25 +21,41 @@ struct ROBEntry {
   ROBState state;
   int tag;
   int dest; // if type is REGISTER, record its destination
-  int32_t value;
+  int32_t value = 0;
+  uint32_t predictedPC;
+  bool halt = false;
   ROBEntry() : type(ROBType::REGISTER), state(ROBState::Waiting) {}
   ROBEntry(ROBType type_) : type(type_), state(ROBState::Waiting) {}
 };
 
 class ROB {
   friend struct ReorderTester;
+  friend struct Reorder720Tester;
+
 private:
   ROBEntry ROBqueue[ROB_CAP];
   uint8_t head = 0;
   uint8_t tail = 0;
   inline static uint64_t ROB_Tag = 1;
+
 public:
   bool isFull() const;
+  bool isEmpty() const;
+  int ClearRATDest() const;
+  int headROB() const;
+  ROBState headState() const;
   int push(ROBEntry entry);
   ROBEntry peek() const;
   ROBEntry pop();
+  int getTail() const;
+  int getHead() const;
   int getIndex(int Tag) const;
-  ROBEntry getEntry(int Tag) const;
-  void writeROB(int32_t value, int index, ROBState state);
+  ROBEntry getEntry(int index) const;
+  int getPredictedPC(int index) const;
+  void writeROBValue(int32_t value, int index);
+  void writeROBPredictedPC(uint32_t pc, int index);
+  void writeROBState(ROBState state, int index);
+  uint64_t currentTag() const;
+  void flush(int tag);
 };
 #endif // ROB_HPP

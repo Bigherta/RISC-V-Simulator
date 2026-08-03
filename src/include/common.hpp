@@ -5,8 +5,12 @@
 constexpr int INTEGERRS_CAP = 8;
 constexpr int STORERS_CAP = 4;
 constexpr int LOADRS_CAP = 4;
+constexpr int BRANCHRS_CAP = 4;
 constexpr int LSQ_CAP = 64;
 constexpr int ROB_CAP = 64;
+constexpr int INQ_CAP = 8;
+constexpr int REGISTER_CAP = 32;
+constexpr int FLUSHARBITER_CAP = 4;
 enum class Operation {
   ADD,
   SUB,
@@ -20,13 +24,21 @@ enum class Operation {
   SLTU,
   AUIPC,
   LUI,
+  EQ,
+  GE,
+  GEU,
+  LT,
+  LTU,
+  NE,
   Load,
   Store,
+  JALR,
   OP_INVALID,
 };
 constexpr bool isMemoryOp(Operation op) {
   return op == Operation::Load || op == Operation::Store;
 }
+constexpr bool isControlOp(Operation op) { return op == Operation::JALR; }
 enum class RISC_V {
   R,
   I,
@@ -47,12 +59,26 @@ struct Instruct {
   int rs1 = 0;
   int rs2 = 0;
   int32_t imm = 0;
+  uint32_t pc = 0;
+  bool isHalt = false;
+};
+
+struct IssueResult {
+  bool valid = false;
+  int rd = 0;
+  int tag = -1;
 };
 
 struct ExecuteResult {
   int32_t value;
   int robTag;
   bool isAddress;
+  bool isControl;
+};
+
+struct BranchResult {
+  int pcResult;
+  int robTag;
 };
 
 struct CDBInfo {
@@ -71,4 +97,15 @@ struct MemRequest {
   int ROBTag;
 };
 
+struct RATWritePort {
+  bool valid = false;
+  uint32_t reg = 0;
+  int32_t value = 0;
+};
+
+struct SquashInfo {
+  bool needSquash = false;
+  int SquashTag = -1;
+  uint32_t SquashPC = 0;
+};
 #endif // COMMON_HPP

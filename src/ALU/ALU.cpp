@@ -1,50 +1,49 @@
 #include "../include/ALU.hpp"
-void ALU::ALUExecute(int32_t op1, int32_t op2, Operation op, int ROBTag) {
-  int32_t result;
-  if (isMemoryOp(op)) {
-    result = op1 + op2;
+#include <cstdint>
+int32_t ALU::ALUCalculate(int32_t op1, int32_t op2, Operation op) {
+  if (isMemoryOp(op) || isControlOp(op)) {
+    return op1 + op2;
   } else {
     switch (op) {
     case Operation::ADD:
     case Operation::AUIPC:
-      result = op1 + op2;
+      return op1 + op2;
       break;
     case Operation::SUB:
-      result = op1 - op2;
+      return op1 - op2;
       break;
     case Operation::XOR:
-      result = op1 ^ op2;
+      return op1 ^ op2;
       break;
     case Operation::OR:
-      result = op1 | op2;
+      return op1 | op2;
       break;
     case Operation::AND:
-      result = op1 & op2;
+      return op1 & op2;
       break;
     case Operation::SL:
-      result = static_cast<int32_t>(static_cast<uint32_t>(op1) << (op2 & 0x1F));
+      return static_cast<int32_t>(static_cast<uint32_t>(op1) << (op2 & 0x1F));
       break;
     case Operation::SRL:
-      result = static_cast<int32_t>(static_cast<uint32_t>(op1) >> (op2 & 0x1F));
+      return static_cast<int32_t>(static_cast<uint32_t>(op1) >> (op2 & 0x1F));
       break;
     case Operation::SRA:
-      result = op1 >> (op2 & 0x1F);
+      return op1 >> (op2 & 0x1F);
       break;
     case Operation::SLT:
-      result = op1 < op2 ? 1 : 0;
+      return op1 < op2 ? 1 : 0;
       break;
     case Operation::SLTU:
-      result = static_cast<uint32_t>(op1) < static_cast<uint32_t>(op2) ? 1 : 0;
+      return static_cast<uint32_t>(op1) < static_cast<uint32_t>(op2) ? 1 : 0;
       break;
     case Operation::LUI:
-      result = op2;
+      return op2;
       break;
     default:
-      result = 0;
+      return 0;
       break;
     }
   }
-  push({result, ROBTag, isMemoryOp(op)});
 }
 
 void ALU::push(ExecuteResult result) {
@@ -58,9 +57,19 @@ ExecuteResult ALU::pop() {
   return temp;
 }
 
-ExecuteResult ALU::peek() const {
-  return outputBuffer[head];
-}
+ExecuteResult ALU::peek() const { return outputBuffer[head]; }
 
 bool ALU::isFull() const { return ((tail + 1) & 0b11) == head; }
 bool ALU::isEmpty() const { return tail == head; }
+
+void ALU::flush(int tag) {
+  int first_flushed = -1;
+  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+    if (outputBuffer[cur].robTag > tag) {
+      if (first_flushed == -1)
+        first_flushed = cur;
+    }
+  }
+  if (first_flushed != -1)
+    tail = first_flushed;
+}

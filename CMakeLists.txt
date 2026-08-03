@@ -10,10 +10,12 @@ set(CPU_SOURCES
     src/Memory/Memory.cpp
     src/ROB/ROB.cpp
     src/ALU/ALU.cpp
+    src/BRU/BRU.cpp
     src/LSQ/LSQ.cpp
     src/CDB/CDB.cpp
     src/Register/Register.cpp
     src/util/util.cpp
+    src/INQ/INQ.cpp
 )
 
 add_executable(code
@@ -39,3 +41,11 @@ add_executable(reorder_test
 
 target_include_directories(reorder_test PRIVATE src/include)
 set_target_properties(reorder_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+add_executable(reorder_720_test
+    test/reorder_720_test.cpp
+    ${CPU_SOURCES}
+)
+
+target_include_directories(reorder_720_test PRIVATE src/include)
+set_target_properties(reorder_720_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")

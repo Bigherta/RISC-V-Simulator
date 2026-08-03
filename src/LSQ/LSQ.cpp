@@ -2,7 +2,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
-#include <string>
+
+bool LSQ::isEmpty() const { return tail == head; }
 
 bool LSQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
@@ -17,18 +18,33 @@ LSQEntry LSQ::pop() {
   return temp;
 }
 
-LSQEntry LSQ::peek() const { return LSQqueue[head]; }
+LSQEntry LSQ::peek() const {
+  if (isEmpty())
+    throw std::runtime_error("peek an empty LSQ!");
+  return LSQqueue[head];
+}
 
 uint8_t LSQ::getHead() const { return head; }
 uint8_t LSQ::getTail() const { return tail; }
 
 int LSQ::getIndex(int ROBTag) const {
   for (int i = 0; i < LSQ_CAP; i++) {
-    if (LSQqueue[i].ROBTag == ROBTag) {
+    if (LSQqueue[i].ROBTag == ROBTag)
       return i;
+  }
+  return -1;
+}
+
+void LSQ::flush(int tag) {
+  int first_flushed = -1;
+  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+    if (LSQqueue[cur].ROBTag > tag) {
+      if (first_flushed == -1)
+        first_flushed = cur;
     }
   }
-  throw std::runtime_error("No finding ROBTag " + std::to_string(ROBTag));
+  if (first_flushed != -1)
+    tail = first_flushed;
 }
 
 void LSQ::writeAddress(uint32_t address, int index) {
@@ -39,10 +55,15 @@ void LSQ::writeAddress(uint32_t address, int index) {
 void LSQ::writeValue(int32_t value, int index) {
   LSQqueue[index].value = value;
   LSQqueue[index].valueState = ValueState::READY;
+  LSQqueue[index].isCDBBroadcast = false;
 }
 
 void LSQ::setValueState(int index, ValueState state) {
   LSQqueue[index].valueState = state;
+}
+
+void LSQ::setCDBBroadcast(int index) {
+  LSQqueue[index].isCDBBroadcast = true;
 }
 
 auto LSQ::getAddress(int index) const -> uint32_t {
@@ -57,7 +78,9 @@ auto LSQ::getValue(int index) const -> int32_t {
   throw std::runtime_error("Value is not ready!");
 }
 
-auto LSQ::getEntry(int index) const -> LSQEntry { return LSQqueue[index]; }
+auto LSQ::getEntry(int index) const -> LSQEntry {
+  return LSQqueue[index];
+}
 
 void LSQ::DataBroadcast(int index) {
   if (!LSQqueue[index].isAddressReady)
@@ -116,7 +139,8 @@ void LSQ::AddressBroadcast(int index) {
       if (LSQqueue[i].type == Operation::Store) {
         if (LSQqueue[i].isAddressReady &&
             LSQqueue[i].address == LSQqueue[index].address) {
-          if (unknownBiggestStore == index && LSQqueue[i].valueState == ValueState::READY) {
+          if (unknownBiggestStore == index &&
+              LSQqueue[i].valueState == ValueState::READY) {
             writeValue(LSQqueue[i].value, index);
           }
           LSQqueue[index].knownBiggestStoreTag = LSQqueue[i].ROBTag;
@@ -160,16 +184,19 @@ int LSQ::CDBDetect() const {
     return 0xFFFFFFFF;
   for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
     if (LSQqueue[cur].type == Operation::Load) {
-     if (LSQqueue[cur].isAddressReady && LSQqueue[cur].valueState == ValueState::READY){
-      return cur;
-     }
+      if (LSQqueue[cur].isAddressReady &&
+          LSQqueue[cur].valueState == ValueState::READY &&
+          !LSQqueue[cur].isCDBBroadcast) {
+        return cur;
+      }
     }
   }
   return 0xFFFFFFFF;
 }
 
 bool LSQ::isReadyToCommit(int index) {
-  if (LSQqueue[index].isAddressReady && LSQqueue[index].valueState == ValueState::READY) {
+  if (LSQqueue[index].isAddressReady &&
+      LSQqueue[index].valueState == ValueState::READY) {
     return true;
   }
   return false;

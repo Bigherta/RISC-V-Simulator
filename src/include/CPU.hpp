@@ -3,88 +3,84 @@
 #ifndef CPU_HPP
 #define CPU_HPP
 #include "ALU.hpp"
+#include "BRU.hpp"
+#include "INQ.hpp"
 #include "LSQ.hpp"
 #include "Memory.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
+#include "Arbiter.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
 
 struct systemState {
-  ReservationStation IntegerRS[8];
-  ReservationStation StoreRS[4];
-  StoreMicroReservationStation MicroStoreRS[4];
-  ReservationStation LoadRS[4];
+  RSCluster RSModule;
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
+  BRU BRUModule;
   LSQ LSQModule;
   CDB CDBModule;
+  INQ INQModule;
   Memory InstructMem, DataMem;
+  FlushArbiter flushArbiter;
   uint32_t programCounter;
-  bool PCWriteEnable;
+  SquashInfo squashDetect;
+  bool haltFetched = false;
+  bool haltCommitted = false;
+  int haltRd = -1;
 
-  systemState() : programCounter(0), PCWriteEnable(false) {}
+  systemState() : programCounter(0) {}
   systemState(Memory mem)
-      : InstructMem(mem), DataMem(mem), programCounter(0), PCWriteEnable(false) {}
-  systemState(const systemState &other) {
-    std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
-    std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
-    std::memcpy(MicroStoreRS, other.MicroStoreRS, sizeof(MicroStoreRS));
-    std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
-    ROBModule = other.ROBModule;
-    ALUModule = other.ALUModule;
-    LSQModule = other.LSQModule;
-    CDBModule = other.CDBModule;
-    REGModule = other.REGModule;
-    InstructMem = other.InstructMem;
-    DataMem = other.DataMem;
-    programCounter = other.programCounter;
-    PCWriteEnable = other.PCWriteEnable;
-  }
-  systemState &operator=(const systemState &other) {
-    if (this == &other)
-      return *this;
-    std::memcpy(IntegerRS, other.IntegerRS, sizeof(IntegerRS));
-    std::memcpy(StoreRS, other.StoreRS, sizeof(StoreRS));
-    std::memcpy(MicroStoreRS, other.MicroStoreRS, sizeof(MicroStoreRS));
-    std::memcpy(LoadRS, other.LoadRS, sizeof(LoadRS));
-    ROBModule = other.ROBModule;
-    ALUModule = other.ALUModule;
-    LSQModule = other.LSQModule;
-    CDBModule = other.CDBModule;
-    REGModule = other.REGModule;
-    InstructMem = other.InstructMem;
-    DataMem = other.DataMem;
-    programCounter = other.programCounter;
-    PCWriteEnable = other.PCWriteEnable;
-    return *this;
+      : InstructMem(mem), DataMem(mem), programCounter(0) {
   }
 };
 
 class CPU {
 private:
-  systemState curCPUstate;
-  systemState nextCPUstate;
+  systemState CPUstate;
   friend struct CPU_Tester;
   friend struct ReorderTester;
+  friend struct Reorder720Tester;
+  friend int debug_trace_main();
+  friend void issue_from_inq(CPU &cpu, uint32_t raw, int pc);
+  friend int debug_trace_main();
+  RSCluster RSModule;
+  RegCluster REGModule;
+  ROB ROBModule;
+  ALU ALUModule;
+  BRU BRUModule;
+  LSQ LSQModule;
+  CDB CDBModule;
+  INQ INQModule;
+  Memory InstructMem, DataMem;
+  FlushArbiter flushArbiter;
+  uint32_t programCounter;
+  SquashInfo squashDetect;
+  bool haltFetched = false;
+  bool haltCommitted = false;
+  int haltRd = -1;
 
 public:
   CPU(Memory mem);
-  int issue();
-  bool issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk);
-  bool issue_IntegerU(Instruct inst, bool has_PC);
-  bool issue_Load(Instruct inst, int n_bytes, bool isUnsigned);
-  bool issue_Store(Instruct inst, int n_bytes);
+  void read();
+  void fetch();
+  void decode();
+  void issue();
+  IssueResult issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
+                              bool isControl);
+  IssueResult issue_UandJ(Instruct inst, bool has_PC, bool isControl = false);
+  IssueResult issue_Load(Instruct inst, int n_bytes, bool isUnsigned);
+  IssueResult issue_Store(Instruct inst, int n_bytes);
+  IssueResult issue_B(Instruct inst);
   static Operation decodeOp(Instruct inst);
   void execute();
-  void apply_B_operation(Instruct inst);
-  void apply_J_operation(Instruct inst);
-  void apply_U_operation(Instruct inst);
   void writeBack();
+  void CDBBroadcast(int tag, int value);
   void commit();
+  void flush();
   void run();
 };
 

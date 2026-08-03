@@ -3,6 +3,7 @@
 #define LSQ_HPP
 #include "common.hpp"
 #include <cstdint>
+#include <cstring>
 enum class ValueState {
   NOTREADY,
   FETCHING,
@@ -28,6 +29,10 @@ private:
   uint8_t tail = 0;
 
 public:
+  // Zero-initialize the whole object (incl. padding) so that byte-level
+  // comparisons of copied states are deterministic.
+  LSQ() { std::memset(this, 0, sizeof(*this)); }
+  bool isEmpty() const;
   bool isFull() const;
   void push(LSQEntry entry);
   LSQEntry peek() const;
@@ -42,10 +47,12 @@ public:
   auto getValue(int index) const -> int32_t;
   auto getEntry(int index) const -> LSQEntry;
   void setValueState(int index, ValueState state);
+  void setCDBBroadcast(int index);
   void DataBroadcast(int index);
   void AddressBroadcast(int index);
   int CDBDetect() const;
   int LoadDetect();
+  void flush(int tag);
 };
 
 #endif // LSQ_HPP

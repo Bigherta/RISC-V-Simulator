@@ -24,6 +24,9 @@ public:
   MemRequest MemReturn() const;
   bool isBusy() const;
   bool isReady() const;
+  bool operator==(const Memory &other) const {
+    return addressMap == other.addressMap;
+  }
 };
 inline uint32_t Memory::hex2uint32(int len, char hex[]) {
   uint32_t result = 0;

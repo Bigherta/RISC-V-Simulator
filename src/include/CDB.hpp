@@ -16,6 +16,7 @@ public:
 
   CDBOutput arbitrate(ExecuteResult aluResult, bool aluValid,
                       ExecuteResult lsqResult, bool lsqValid) const;
+  
 };
 
 #endif // CDB_HPP

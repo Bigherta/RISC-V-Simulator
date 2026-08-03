@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include "common.hpp"
 #ifndef REGISTER_HPP
 #define REGISTER_HPP
 
@@ -22,8 +23,8 @@ struct OperandInfo {
 
 class RegCluster {
 private:
-  Register reg[32];
-  int RegisterTable[32];
+  Register reg[REGISTER_CAP];
+  int RegisterTable[REGISTER_CAP];
 
 public:
   RegCluster();
@@ -35,7 +36,6 @@ public:
   void setRAT(int regNum, int robTag);
 
   OperandInfo readOperand(int regNum) const;
-
   void resetX0();
 };
 

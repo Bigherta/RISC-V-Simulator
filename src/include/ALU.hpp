@@ -11,9 +11,10 @@ private:
 public:
   bool isFull() const;
   bool isEmpty() const;
-  void ALUExecute(int32_t op1, int32_t op2, Operation op, int ROBTag);
+  static int32_t ALUCalculate(int32_t op1, int32_t op2, Operation op);
   void push(ExecuteResult);
+  void flush(int tag);
   ExecuteResult pop();
   ExecuteResult peek() const;
 };
-#endif
+#endif // ALU_HPP

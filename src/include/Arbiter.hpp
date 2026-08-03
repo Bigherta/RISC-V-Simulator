@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #ifndef ARBITER_HPP
 #define ARBITER_HPP
 #include "common.hpp"
@@ -29,6 +30,7 @@ private:
   FlushRequest requests[FLUSHARBITER_CAP];
 
 public:
+  FlushArbiter() { std::memset(this, 0, sizeof(*this)); }
   void receive(SquashInfo request) {
     for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
       if (!requests[i].valid) {

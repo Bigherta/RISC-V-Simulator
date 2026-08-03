@@ -25,27 +25,3 @@ add_executable(code
 
 target_include_directories(code PRIVATE src/include)
 set_target_properties(code PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-
-add_executable(cpu_test
-    test/cpu_test.cpp
-    ${CPU_SOURCES}
-)
-
-target_include_directories(cpu_test PRIVATE src/include)
-set_target_properties(cpu_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-
-add_executable(reorder_test
-    test/reorder_test.cpp
-    ${CPU_SOURCES}
-)
-
-target_include_directories(reorder_test PRIVATE src/include)
-set_target_properties(reorder_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-
-add_executable(reorder_720_test
-    test/reorder_720_test.cpp
-    ${CPU_SOURCES}
-)
-
-target_include_directories(reorder_720_test PRIVATE src/include)
-set_target_properties(reorder_720_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")

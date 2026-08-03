@@ -2,6 +2,7 @@
 #ifndef CPU_HPP
 #define CPU_HPP
 #include "ALU.hpp"
+#include "Arbiter.hpp"
 #include "BRU.hpp"
 #include "INQ.hpp"
 #include "LSQ.hpp"
@@ -9,7 +10,6 @@
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
-#include "Arbiter.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -75,6 +75,7 @@ public:
   static Operation decodeOp(Instruct inst);
   void execute();
   void writeBack();
+  CDBBypassResult CDBBypass(int robTag) const;
   void CDBBroadcast(int tag, int value);
   void commit();
   void flush();

@@ -61,7 +61,12 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
         (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
       IntegerRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
-      IntegerRS.qj = op1.robTag;
+      auto bypass = CDBBypass(op1.robTag);
+      if (bypass.valid) {
+        IntegerRS.vj = bypass.value;
+      } else {
+        IntegerRS.qj = op1.robTag;
+      }
     }
   }
   if (imm_as_vk) {
@@ -76,7 +81,12 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
           (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
         IntegerRS.vk = ROBModule.getEntry(op2Index).value;
       } else {
-        IntegerRS.qk = op2.robTag;
+        auto bypass = CDBBypass(op2.robTag);
+        if (bypass.valid) {
+          IntegerRS.vk = bypass.value;
+        } else {
+          IntegerRS.qk = op2.robTag;
+        }
       }
     }
   }
@@ -151,7 +161,12 @@ IssueResult CPU::issue_B(Instruct inst) {
         (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
       BranchRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
-      BranchRS.qj = op1.robTag;
+      auto bypass = CDBBypass(op1.robTag);
+      if (bypass.valid) {
+        BranchRS.vj = bypass.value;
+      } else {
+        BranchRS.qj = op1.robTag;
+      }
     }
   }
   auto op2 = REGModule.readOperand(regNum2);
@@ -163,7 +178,12 @@ IssueResult CPU::issue_B(Instruct inst) {
         (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
       BranchRS.vk = ROBModule.getEntry(op2Index).value;
     } else {
-      BranchRS.qk = op2.robTag;
+      auto bypass = CDBBypass(op2.robTag);
+      if (bypass.valid) {
+        BranchRS.vk = bypass.value;
+      } else {
+        BranchRS.qk = op2.robTag;
+      }
     }
   }
   ROBEntry newROB(ROBType::BRANCH);
@@ -198,7 +218,12 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
         (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
       LoadRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
-      LoadRS.qj = op1.robTag;
+      auto bypass = CDBBypass(op1.robTag);
+      if (bypass.valid) {
+        LoadRS.vj = bypass.value;
+      } else {
+        LoadRS.qj = op1.robTag;
+      }
     }
   }
   LoadRS.vk = inst.imm;
@@ -245,7 +270,12 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
         (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
       StoreRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
-      StoreRS.qj = op1.robTag;
+      auto bypass = CDBBypass(op1.robTag);
+      if (bypass.valid) {
+        StoreRS.vj = bypass.value;
+      } else {
+        StoreRS.qj = op1.robTag;
+      }
     }
   }
   StoreRS.vk = inst.imm;
@@ -261,7 +291,12 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
         (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
       MicroRS.vrs2 = ROBModule.getEntry(op2Index).value;
     } else {
-      MicroRS.qrs2 = op2.robTag;
+      auto bypass = CDBBypass(op2.robTag);
+      if (bypass.valid) {
+        MicroRS.vrs2 = bypass.value;
+      } else {
+        MicroRS.qrs2 = op2.robTag;
+      }
     }
   }
 
@@ -714,6 +749,17 @@ void CPU::CDBBroadcast(int tag, int value) {
       CPUstate.RSModule.BranchRS[i].qk = -1;
     }
   }
+}
+
+CDBBypassResult CPU::CDBBypass(int robTag) const {
+  CDBBypassResult out;
+  if (cdbArbiter.valid && !cdbArbiter.result.isAddress &&
+      !cdbArbiter.result.isControl &&
+      cdbArbiter.result.robTag == robTag) {
+    out.valid = true;
+    out.value = cdbArbiter.result.value;
+  }
+  return out;
 }
 
 void CPU::writeBack() {

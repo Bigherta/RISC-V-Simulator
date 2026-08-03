@@ -115,4 +115,9 @@ struct CDBOutput {
   bool aluGranted;
   bool lsqGranted;
 };
+
+struct CDBBypassResult {
+  bool valid = false;
+  int32_t value = 0;
+};
 #endif // COMMON_HPP

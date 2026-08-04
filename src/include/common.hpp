@@ -15,6 +15,7 @@ constexpr int ALU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int BHT_CAP = 4096;
 constexpr int BTB_CAP = 256;
+constexpr int RAS_CAP = 32;
 enum class Operation {
   ADD,
   SUB,
@@ -132,8 +133,13 @@ struct PredictInfo {
 };
 
 struct BTBEntry {
-    uint32_t actualPC;
-    uint32_t target;
-    bool valid;
+  uint32_t actualPC;
+  uint32_t target;
+  bool valid;
+};
+
+struct RASCheckPoint {
+  int top;
+  uint32_t RAS[RAS_CAP];
 };
 #endif // COMMON_HPP

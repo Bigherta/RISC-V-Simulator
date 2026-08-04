@@ -7,11 +7,13 @@ bool INQ::isFull() const { return ((tail + 1) & (INQ_CAP - 1)) == head; }
 
 bool INQ::isEmpty() const { return head == tail; }
 
-void INQ::push(uint32_t raw, int pc, int32_t predictedPC) {
+void INQ::push(uint32_t raw, int pc, int32_t predictedPC,
+               const RASCheckPoint &ckpt) {
   INQEntry entry{};
   entry.raw = raw;
   entry.pc = pc;
   entry.predictedPC = predictedPC;
+  entry.ras_ckpt = ckpt;
   INQqueue[tail] = entry;
   tail = (tail + 1) & (INQ_CAP - 1);
 }
@@ -20,6 +22,11 @@ int32_t INQ::peekPredictedPC() const {
   if (isEmpty())
     throw std::runtime_error("peekPredictedPC an empty INQ!");
   return INQqueue[head].predictedPC;
+}
+RASCheckPoint INQ::peekRASCkpt() const {
+  if (isEmpty())
+    throw std::runtime_error("peekCheckPoint an empty INQ!");
+  return INQqueue[head].ras_ckpt;
 }
 
 Instruct INQ::peek() const {

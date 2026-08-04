@@ -30,7 +30,19 @@ void CPU::fetch() {
     auto prediction = BPModule.predict(programCounter);
     auto predictedPC =
         prediction.taken ? prediction.predictPC : programCounter + 4;
-    CPUstate.INQModule.push(raw_inst, programCounter, predictedPC);
+    auto ckpt = BPModule.snapshotCheckPoint();
+    auto opcode = raw_inst & 0x7F;
+    auto rd = (raw_inst >> 7) & 0x1F;
+    auto rs1 = (raw_inst >> 15) & 0x1F;
+    auto imm_i = (raw_inst >> 20) & 0xFFF;
+    if (opcode == 0b1101111 && rd == 1) {
+      if (!CPUstate.BPModule.RAS_full())
+        CPUstate.BPModule.RAS_push(programCounter + 4);
+    } else if (opcode == 0b1100111 && rd == 0 && rs1 == 1 && imm_i == 0) {
+      if (!CPUstate.BPModule.RAS_empty())
+        predictedPC = CPUstate.BPModule.RAS_pop();
+    }
+    CPUstate.INQModule.push(raw_inst, programCounter, predictedPC, ckpt);
     CPUstate.programCounter = predictedPC;
   }
 }
@@ -103,6 +115,7 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
     newROB.state = ROBState::ValueReady;
+    newROB.ras_ckpt = INQModule.peekRASCkpt();
   }
   newROB.tag = CPUstate.ROBModule.push(newROB);
   IntegerRS.ROB_dest = newROB.tag;
@@ -135,6 +148,7 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
     newROB.state = ROBState::ValueReady;
+    newROB.ras_ckpt = INQModule.peekRASCkpt();
   }
   newROB.tag = CPUstate.ROBModule.push(newROB);
   IntegerRS.ROB_dest = newROB.tag;
@@ -195,6 +209,7 @@ IssueResult CPU::issue_B(Instruct inst) {
   ROBEntry newROB(ROBType::BRANCH);
   newROB.pc = inst.pc;
   newROB.predictedPC = INQModule.peekPredictedPC();
+  newROB.ras_ckpt = INQModule.peekRASCkpt();
   newROB.tag = CPUstate.ROBModule.push(newROB);
   BranchRS.ROB_dest = newROB.tag;
   for (int i = 0; i < BRANCHRS_CAP; i++) {
@@ -754,7 +769,8 @@ void CPU::CDBBroadcast(int tag, int value) {
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
-    if (!RSModule.MicroStoreRS[i].free && RSModule.MicroStoreRS[i].qrs2 == tag) {
+    if (!RSModule.MicroStoreRS[i].free &&
+        RSModule.MicroStoreRS[i].qrs2 == tag) {
       CPUstate.RSModule.MicroStoreRS[i].vrs2 = value;
       CPUstate.RSModule.MicroStoreRS[i].qrs2 = -1;
     }
@@ -1014,6 +1030,12 @@ void CPU::flush() {
     CPUstate.BRUModule.flush(squashDetect.SquashTag);
     // 6. clear the old flushArbiter elements
     CPUstate.flushArbiter.clear(squashDetect.SquashTag);
+    // 7. clear the wrong RAS
+    auto index = ROBModule.getIndex(squashDetect.SquashTag);
+    if (index >= 0) {
+      auto entry = ROBModule.getEntry(index);
+      CPUstate.BPModule.recoverCheckPoint(entry.ras_ckpt);
+    }
   }
 }
 void CPU::run() {

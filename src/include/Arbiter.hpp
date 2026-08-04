@@ -34,14 +34,26 @@ private:
 public:
   FlushArbiter() { std::memset(this, 0, sizeof(*this)); }
   void receive(SquashInfo request) {
-    for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
-      if (!requests[i].valid) {
-        requests[i].valid = true;
-        requests[i].requestArgs = request;
-        return;
+    int w = 0;
+    for (int r = 0; r < FLUSHARBITER_CAP; ++r) {
+      if (requests[r].valid) {
+        if (r != w) {
+          requests[w] = requests[r];
+          requests[r].valid = false;
+        }
+        ++w;
       }
     }
-    throw std::runtime_error("flush arbiter overload!");
+    if (w == FLUSHARBITER_CAP)
+      throw std::runtime_error("flush arbiter overload!");
+    int pos = 0;
+    while (pos < w && requests[pos].requestArgs.SquashTag <
+                         request.SquashTag)
+      ++pos;
+    for (int i = FLUSHARBITER_CAP - 1; i > pos; --i)
+      requests[i] = requests[i - 1];
+    requests[pos].valid = true;
+    requests[pos].requestArgs = request;
   }
   SquashInfo arbitResult() const {
     SquashInfo result{};

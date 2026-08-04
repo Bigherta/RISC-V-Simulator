@@ -10,6 +10,7 @@
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
+#include "BranchPredictor.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -23,6 +24,7 @@ struct systemState {
   LSQ LSQModule;
   INQ INQModule;
   Memory DataMem;
+  BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   uint32_t programCounter;
   SquashInfo squashDetect;
@@ -52,6 +54,7 @@ private:
   LSQ LSQModule;
   INQ INQModule;
   Memory DataMem;
+  BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
   uint32_t programCounter;

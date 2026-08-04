@@ -94,9 +94,9 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
 
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
-  newROB.predictedPC = inst.pc + 4;
+  newROB.predictedPC = BPModule.predict(inst.pc);
   if (isControl) {
-    newROB.value = inst.pc + 4;
+    newROB.value = BPModule.predict(inst.pc);
     newROB.type = ROBType::LINK;
     newROB.state = ROBState::ValueReady;
   }
@@ -125,9 +125,9 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   IntegerRS.vk = inst.imm;
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
-  newROB.predictedPC = inst.pc + 4;
+  newROB.predictedPC = BPModule.predict(inst.pc);
   if (isControl) {
-    newROB.value = inst.pc + 4;
+    newROB.value = BPModule.predict(inst.pc);
     newROB.type = ROBType::LINK;
     newROB.state = ROBState::ValueReady;
   }
@@ -188,7 +188,7 @@ IssueResult CPU::issue_B(Instruct inst) {
     }
   }
   ROBEntry newROB(ROBType::BRANCH);
-  newROB.predictedPC = inst.pc + 4;
+  newROB.predictedPC = BPModule.predict(inst.pc);
   newROB.tag = CPUstate.ROBModule.push(newROB);
   BranchRS.ROB_dest = newROB.tag;
   for (int i = 0; i < BRANCHRS_CAP; i++) {
@@ -911,6 +911,7 @@ void CPU::read() {
   BRUModule = CPUstate.BRUModule;
   LSQModule = CPUstate.LSQModule;
   INQModule = CPUstate.INQModule;
+  BPModule = CPUstate.BPModule;
   DataMem.snapshotFrom(CPUstate.DataMem);
   programCounter = CPUstate.programCounter;
   haltFetched = CPUstate.haltFetched;

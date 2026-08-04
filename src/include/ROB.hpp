@@ -23,6 +23,7 @@ struct ROBEntry {
   int dest; // if type is REGISTER, record its destination
   int32_t value = 0;
   uint32_t predictedPC = 0;
+  int32_t pc = 0;
   bool halt = false;
   ROBEntry() : type(ROBType::REGISTER), state(ROBState::Waiting) {}
   ROBEntry(ROBType type_) : type(type_), state(ROBState::Waiting) {}

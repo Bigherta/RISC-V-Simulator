@@ -23,6 +23,8 @@ void RegCluster::setRAT(int regNum, int robTag) {
 }
 
 OperandInfo RegCluster::readOperand(int regNum) const {
+  if (regNum == 0)
+    return {true, 0, -1};
   int tag = RegisterTable[regNum];
   if (tag == -1) {
     return {true, readReg(regNum), -1};

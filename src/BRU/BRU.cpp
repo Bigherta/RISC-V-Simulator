@@ -27,7 +27,7 @@ void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
     taken = false;
     break;
   }
-  push({taken ? pc + imm : pc + 4, ROBTag});
+  push({pc, taken ? pc + imm : pc + 4, ROBTag});
 }
 
 void BRU::push(BranchResult result) {

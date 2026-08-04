@@ -13,6 +13,8 @@ constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
 constexpr int BRU_CAP = 4;
+constexpr int BHT_CAP = 4096;
+constexpr int BTB_CAP = 256;
 enum class Operation {
   ADD,
   SUB,
@@ -79,6 +81,7 @@ struct ExecuteResult {
 };
 
 struct BranchResult {
+  int pcFrom;
   int pcResult;
   int robTag;
 };
@@ -121,5 +124,16 @@ struct CDBOutput {
 struct CDBBypassResult {
   bool valid = false;
   int32_t value = 0;
+};
+
+struct PredictInfo {
+  bool taken;
+  int32_t predictPC;
+};
+
+struct BTBEntry {
+    uint32_t actualPC;
+    uint32_t target;
+    bool valid;
 };
 #endif // COMMON_HPP

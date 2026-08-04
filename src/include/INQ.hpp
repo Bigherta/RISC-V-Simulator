@@ -7,6 +7,7 @@
 struct INQEntry {
   uint32_t raw;
   int pc;
+  int32_t predictedPC;
   Instruct ninst;
   bool decoded;
 };
@@ -21,7 +22,8 @@ public:
   INQ() { std::memset(this, 0, sizeof(*this)); }
   bool isFull() const;
   bool isEmpty() const;
-  void push(uint32_t raw, int pc);
+  void push(uint32_t raw, int pc, int32_t predictedPC);
+  int32_t peekPredictedPC() const;
   Instruct peek() const;
   Instruct pop();
   uint8_t getHead() const;

@@ -22,7 +22,7 @@ struct ROBEntry {
   int tag;
   int dest; // if type is REGISTER, record its destination
   int32_t value = 0;
-  uint32_t predictedPC;
+  uint32_t predictedPC = 0;
   bool halt = false;
   ROBEntry() : type(ROBType::REGISTER), state(ROBState::Waiting) {}
   ROBEntry(ROBType type_) : type(type_), state(ROBState::Waiting) {}
@@ -36,7 +36,7 @@ private:
   ROBEntry ROBqueue[ROB_CAP];
   uint8_t head = 0;
   uint8_t tail = 0;
-  inline static uint64_t ROB_Tag = 1;
+  uint64_t ROB_Tag = 1;
 
 public:
   bool isFull() const;

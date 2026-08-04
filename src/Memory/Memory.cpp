@@ -77,6 +77,8 @@ void Memory::execute() {
 
 MemRequest Memory::MemReturn() const { return MemOutputBuffer; }
 
+MemRequest Memory::MemExecutionState() const { return MemExecution; }
+
 bool Memory::isBusy() const { return busy; }
 
 bool Memory::isReady() const { return bufferValid; }

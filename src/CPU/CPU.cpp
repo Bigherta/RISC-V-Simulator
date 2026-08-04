@@ -609,7 +609,6 @@ void CPU::execute() {
       }
     }
   }
-  // store execute
   for (int i = 0; i < STORERS_CAP; ++i) {
     if (!RSModule.MicroStoreRS[i].free && RSModule.MicroStoreRS[i].qrs2 == -1 &&
         (!squashDetect.needSquash ||
@@ -650,7 +649,7 @@ void CPU::execute() {
   }
   // MEM execute
   CPUstate.DataMem.execute();
-  //  store and load execute
+  // LSQ execute
   bool memBusy = DataMem.isBusy();
   if (!memBusy && !LSQModule.isEmpty() &&
       LSQModule.peek().type == Operation::Store) {
@@ -691,7 +690,6 @@ void CPU::execute() {
         CPUstate.LSQModule.setValueState(loadIndex, ValueState::FETCHING);
     }
   }
-  // LSQ execute
   for (int i = LSQModule.getHead(); i != LSQModule.getTail();
        i = (i + 1) & 0x3F) {
     auto e = LSQModule.getEntry(i);
@@ -758,8 +756,7 @@ void CPU::CDBBroadcast(int tag, int value) {
 CDBBypassResult CPU::CDBBypass(int robTag) const {
   CDBBypassResult out;
   if (cdbArbiter.valid && !cdbArbiter.result.isAddress &&
-      !cdbArbiter.result.isControl &&
-      cdbArbiter.result.robTag == robTag) {
+      !cdbArbiter.result.isControl && cdbArbiter.result.robTag == robTag) {
     out.valid = true;
     out.value = cdbArbiter.result.value;
   }
@@ -785,6 +782,11 @@ void CPU::writeBack() {
   if (!BRUModule.isEmpty()) {
     auto BranchResult = BRUModule.peek();
     auto index = ROBModule.getIndex(BranchResult.robTag);
+    if (index >= 0) {
+      ++branchTotal;
+      if (BranchResult.pcResult == ROBModule.getPredictedPC(index))
+        ++branchCorrect;
+    }
     if (index >= 0 && (!squashDetect.needSquash ||
                        (squashDetect.needSquash &&
                         BranchResult.robTag < squashDetect.SquashTag))) {
@@ -796,7 +798,7 @@ void CPU::writeBack() {
       }
       CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
     }
-    CPUstate.BRUModule.pop();
+    CPUstate.BRUModule.remove(BranchResult.robTag);
   }
 
   CDBOutput cdbOut = cdbArbiter;
@@ -808,7 +810,7 @@ void CPU::writeBack() {
   }
 
   if (cdbOut.aluGranted)
-    CPUstate.ALUModule.pop();
+    CPUstate.ALUModule.remove(cdbOut.result.robTag);
   if (squashDetect.needSquash &&
       cdbOut.result.robTag > squashDetect.SquashTag) {
     if (BranchSquash.needSquash) {
@@ -983,15 +985,21 @@ void CPU::run() {
   while (!finish) {
     read();
     issue();
-    commit();
-    writeBack();
     flush();
     execute();
+    commit();
+    writeBack();
     decode();
     fetch();
     CPUstate.REGModule.resetX0();
     ++clock;
     finish = haltCommitted && INQModule.isEmpty() && ROBModule.isEmpty();
   }
+  if (debug::enabled(debug::TOPIC_CLOCK))
+    debug::print("clock: %llu\n", clock);
+  if (debug::enabled(debug::TOPIC_BRANCH))
+    debug::print("branch: %llu/%llu correct (%.2f%%)\n", branchCorrect,
+                 branchTotal,
+                 branchTotal ? 100.0 * branchCorrect / branchTotal : 0.0);
   std::cout << std::dec << (REGModule.readReg(haltRd) & 0xFF) << std::endl;
 }

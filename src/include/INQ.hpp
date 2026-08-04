@@ -30,6 +30,6 @@ public:
   void decode(int index);
   void clear();
   bool headDecoded() const;
-  void decodeAll();
+  INQEntry getEntry(int index) const;
 };
 #endif // INQ_HPP

@@ -16,6 +16,8 @@ enum Topic : unsigned {
   TOPIC_COMMIT = 1u << 3,
   TOPIC_LSQ = 1u << 4,
   TOPIC_MEM = 1u << 5,
+  TOPIC_CLOCK = 1u << 6,
+  TOPIC_BRANCH = 1u << 7,
   TOPIC_ALL = 0xFFFFFFFFu,
 };
 
@@ -41,6 +43,10 @@ static unsigned parseVerbose(const char *env) {
       mask |= TOPIC_LSQ;
     else if (len == 3 && strncmp(p, "mem", 3) == 0)
       mask |= TOPIC_MEM;
+    else if (len == 5 && strncmp(p, "clock", 5) == 0)
+      mask |= TOPIC_CLOCK;
+    else if (len == 6 && strncmp(p, "branch", 6) == 0)
+      mask |= TOPIC_BRANCH;
     if (end == nullptr)
       break;
     p = end + 1;

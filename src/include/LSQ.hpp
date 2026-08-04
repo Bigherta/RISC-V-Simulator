@@ -39,7 +39,7 @@ public:
   LSQEntry pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
-  bool isReadyToCommit(int index);
+  bool isReadyToCommit(int index) const;
   int getIndex(int ROBTag) const;
   void writeAddress(uint32_t address, int index);
   void writeValue(int32_t value, int index);
@@ -51,7 +51,7 @@ public:
   void DataBroadcast(int index);
   void AddressBroadcast(int index);
   int CDBDetect() const;
-  int LoadDetect();
+  int LoadDetect() const;
   void flush(int tag);
 };
 

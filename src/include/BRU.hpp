@@ -5,9 +5,8 @@
 #include "common.hpp"
 class BRU {
 private:
-  BranchResult outputBuffer[4];
-  uint8_t head = 0;
-  uint8_t tail = 0;
+  BranchResult outputBuffer[BRU_CAP];
+  bool slotValid[BRU_CAP] = {};
 
 public:
   bool isFull() const;
@@ -15,8 +14,10 @@ public:
   void BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
                   Operation op, int ROBTag);
   void push(BranchResult);
+  void remove(int robTag);
   void flush(int tag);
-  BranchResult pop();
   BranchResult peek() const;
+  BranchResult getEntry(int index) const;
+  bool isValid(int index) const { return slotValid[index]; }
 };
 #endif // BRU_HPP

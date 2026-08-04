@@ -5,16 +5,17 @@
 #include "common.hpp"
 class ALU {
 private:
-  ExecuteResult outputBuffer[4];
-  uint8_t head = 0;
-  uint8_t tail = 0;
+  ExecuteResult outputBuffer[ALU_CAP];
+  bool slotValid[ALU_CAP] = {};
 public:
   bool isFull() const;
   bool isEmpty() const;
   static int32_t ALUCalculate(int32_t op1, int32_t op2, Operation op);
   void push(ExecuteResult);
+  void remove(int robTag);
   void flush(int tag);
-  ExecuteResult pop();
   ExecuteResult peek() const;
+  ExecuteResult getEntry(int index) const;
+  bool isValid(int index) const { return slotValid[index]; }
 };
 #endif // ALU_HPP

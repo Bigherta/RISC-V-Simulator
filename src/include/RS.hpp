@@ -6,8 +6,8 @@
 struct ReservationStation {
   Operation op;
   bool free;
-  int32_t vj;
-  int32_t vk;
+  int32_t vj = 0;
+  int32_t vk = 0;
   int qj = -1;
   int qk = -1;
   int ROB_dest = ~0u >> 1;
@@ -17,7 +17,7 @@ struct ReservationStation {
 
 struct StoreMicroReservationStation {
   bool free;
-  int32_t vrs2;
+  int32_t vrs2 = 0;
   int qrs2 = -1;
   int ROB_dest = ~0u >> 1;
   StoreMicroReservationStation() : free(true) {}

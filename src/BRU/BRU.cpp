@@ -31,31 +31,51 @@ void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
 }
 
 void BRU::push(BranchResult result) {
-  outputBuffer[tail] = result;
-  tail = (tail + 1) & 0b11;
+  for (int i = 0; i < BRU_CAP; i++)
+    if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
 }
 
-BranchResult BRU::pop() {
-  auto temp = outputBuffer[head];
-  head = (head + 1) & 0b11;
-  return temp;
+BranchResult BRU::peek() const {
+  int best = -1;
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robTag < outputBuffer[best].robTag))
+      best = i;
+  }
+  if (best >= 0)
+    return outputBuffer[best];
+  return {};
 }
 
-BranchResult BRU::peek() const { return outputBuffer[head]; }
+BranchResult BRU::getEntry(int index) const { return outputBuffer[index]; }
 
-bool BRU::isFull() const { return ((tail + 1) & 0b11) == head; }
+bool BRU::isFull() const {
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (!slotValid[i])
+      return false;
+  }
+  return true;
+}
 
-bool BRU::isEmpty() const { return tail == head; }
+bool BRU::isEmpty() const {
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i])
+      return false;
+  }
+  return true;
+}
+
+void BRU::remove(int robTag) {
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
+      slotValid[i] = false;
+      return;
+    }
+  }
+}
 
 void BRU::flush(int tag) {
-  BranchResult kept[4];
-  int n = 0;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0b11) {
-    if (outputBuffer[cur].robTag <= tag)
-      kept[n++] = outputBuffer[cur];
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && outputBuffer[i].robTag > tag)
+      slotValid[i] = false;
   }
-  for (int i = 0; i < n; ++i)
-    outputBuffer[i] = kept[i];
-  head = 0;
-  tail = n;
 }

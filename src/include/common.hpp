@@ -11,6 +11,8 @@ constexpr int ROB_CAP = 64;
 constexpr int INQ_CAP = 8;
 constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
+constexpr int ALU_CAP = 4;
+constexpr int BRU_CAP = 4;
 enum class Operation {
   ADD,
   SUB,

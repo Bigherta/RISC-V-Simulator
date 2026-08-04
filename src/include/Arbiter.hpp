@@ -65,6 +65,7 @@ public:
       }
     }
   }
+  FlushRequest getRequest(int i) const { return requests[i]; }
 };
 
 class CDBArbiter {

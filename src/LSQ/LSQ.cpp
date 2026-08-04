@@ -153,7 +153,7 @@ void LSQ::AddressBroadcast(int index) {
   }
 }
 
-int LSQ::LoadDetect() {
+int LSQ::LoadDetect() const {
   bool hasUnknownStore = false;
   if (head == tail)
     return 0xFFFFFFFF;
@@ -172,8 +172,7 @@ int LSQ::LoadDetect() {
         // overwrite this load later (via its DataBroadcast); dispatching to
         // memory now could read a stale value. Wait for the forwarding.
         bool hasPendingSameAddrStore = false;
-        for (int i = (cur + 63) & 0x3F; i != ((head - 1) & 0x3F);
-             i = (i + 63) & 0x3F) {
+        for (int i = head; i != cur; i = (i + 1) & 0x3F) {
           if (LSQqueue[i].type == Operation::Store &&
               LSQqueue[i].isAddressReady &&
               LSQqueue[i].address == LSQqueue[cur].address &&
@@ -208,7 +207,7 @@ int LSQ::CDBDetect() const {
   return 0xFFFFFFFF;
 }
 
-bool LSQ::isReadyToCommit(int index) {
+bool LSQ::isReadyToCommit(int index) const {
   if (LSQqueue[index].isAddressReady &&
       LSQqueue[index].valueState == ValueState::READY) {
     return true;

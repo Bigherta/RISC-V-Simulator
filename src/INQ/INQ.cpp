@@ -51,16 +51,7 @@ void INQ::decode(int index) {
 
 bool INQ::headDecoded() const { return !isEmpty() && INQqueue[head].decoded; }
 
-void INQ::decodeAll() {
-  for (int i = head; i != tail; i = (i + 1) & (INQ_CAP - 1)) {
-    if (!INQqueue[i].decoded) {
-      INQqueue[i].ninst = Decoder::decode(INQqueue[i].raw);
-      INQqueue[i].ninst.pc = INQqueue[i].pc;
-      INQqueue[i].decoded = true;
-      INQqueue[i].ninst.isHalt = (INQqueue[i].raw == 0x0ff00513);
-    }
-  }
-}
+INQEntry INQ::getEntry(int index) const { return INQqueue[index]; }
 
 void INQ::clear() {
   std::memset(this, 0, sizeof(*this));

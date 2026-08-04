@@ -59,6 +59,8 @@ private:
   bool haltFetched = false;
   bool haltCommitted = false;
   int haltRd = -1;
+  uint64_t branchTotal = 0;
+  uint64_t branchCorrect = 0;
 
 public:
   CPU(Memory mem);

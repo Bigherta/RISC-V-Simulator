@@ -47,30 +47,51 @@ int32_t ALU::ALUCalculate(int32_t op1, int32_t op2, Operation op) {
 }
 
 void ALU::push(ExecuteResult result) {
-  outputBuffer[tail] = result;
-  tail = (tail + 1) & 0b11;
+  for (int i = 0; i < ALU_CAP; i++)
+    if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
 }
 
-ExecuteResult ALU::pop() {
-  auto temp = outputBuffer[head];
-  head = (head + 1) & 0b11;
-  return temp;
+ExecuteResult ALU::peek() const {
+  int best = -1;
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robTag < outputBuffer[best].robTag))
+      best = i;
+  }
+  if (best >= 0)
+    return outputBuffer[best];
+  return {};
 }
 
-ExecuteResult ALU::peek() const { return outputBuffer[head]; }
+ExecuteResult ALU::getEntry(int index) const { return outputBuffer[index]; }
 
-bool ALU::isFull() const { return ((tail + 1) & 0b11) == head; }
-bool ALU::isEmpty() const { return tail == head; }
+bool ALU::isFull() const {
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (!slotValid[i])
+      return false;
+  }
+  return true;
+}
+
+bool ALU::isEmpty() const {
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i])
+      return false;
+  }
+  return true;
+}
+
+void ALU::remove(int robTag) {
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
+      slotValid[i] = false;
+      return;
+    }
+  }
+}
 
 void ALU::flush(int tag) {
-  ExecuteResult kept[4];
-  int n = 0;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0b11) {
-    if (outputBuffer[cur].robTag <= tag)
-      kept[n++] = outputBuffer[cur];
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && outputBuffer[i].robTag > tag)
+      slotValid[i] = false;
   }
-  for (int i = 0; i < n; ++i)
-    outputBuffer[i] = kept[i];
-  head = 0;
-  tail = n;
 }

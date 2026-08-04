@@ -55,6 +55,7 @@ public:
   void MemPull();
   void execute();
   MemRequest MemReturn() const;
+  MemRequest MemExecutionState() const;
   bool isBusy() const;
   bool isReady() const;
   bool operator==(const Memory &other) const {

@@ -615,8 +615,12 @@ void CPU::execute() {
          (squashDetect.needSquash &&
           RSModule.MicroStoreRS[i].ROB_dest < squashDetect.SquashTag))) {
       auto index = LSQModule.getIndex(RSModule.MicroStoreRS[i].ROB_dest);
-      CPUstate.LSQModule.writeValue(RSModule.MicroStoreRS[i].vrs2, index);
-      CPUstate.LSQModule.DataBroadcast(index);
+      if (index >= 0) {
+        auto plan = LSQModule.planDataForward(
+            index, RSModule.MicroStoreRS[i].vrs2);
+        CPUstate.LSQModule.writeValue(RSModule.MicroStoreRS[i].vrs2, index);
+        CPUstate.LSQModule.applyStoreToLoadForward(plan);
+      }
       CPUstate.RSModule.MicroStoreRS[i].free = true;
     }
   }
@@ -838,8 +842,9 @@ void CPU::writeBack() {
     auto value = cdbOut.result.value;
     auto index = LSQModule.getIndex(tag);
     if (index >= 0) {
+      auto plan = LSQModule.planAddressForward(index, value);
       CPUstate.LSQModule.writeAddress(value, index);
-      CPUstate.LSQModule.AddressBroadcast(index);
+      CPUstate.LSQModule.applyStoreToLoadForward(plan);
     }
   } else if (isControl) {
     const auto robTag = tag;

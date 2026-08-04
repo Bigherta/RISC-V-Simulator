@@ -1,6 +1,4 @@
 #include "../include/LSQ.hpp"
-#include <algorithm>
-#include <cstdint>
 #include <stdexcept>
 
 bool LSQ::isEmpty() const { return tail == head; }
@@ -82,22 +80,23 @@ auto LSQ::getEntry(int index) const -> LSQEntry {
   return LSQqueue[index];
 }
 
-void LSQ::DataBroadcast(int index) {
+auto LSQ::planDataForward(int index, int32_t value) const
+    -> LSQStoreToLoadForwardPlan {
+  LSQStoreToLoadForwardPlan plan{};
   if (!LSQqueue[index].isAddressReady)
-    return;
+    return plan;
   if (index == ((tail - 1) & 0x3F))
-    return;
+    return plan;
   int unknownBiggestStore = index;
   int knownBiggestSameAddrStore = index;
   for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
     if (LSQqueue[i].type == Operation::Load &&
         LSQqueue[i].address == LSQqueue[index].address) {
-      LSQqueue[i].knownBiggestStoreTag =
+      plan.writes[plan.count++] = {
+          static_cast<uint8_t>(i), value,
           std::max(LSQqueue[i].knownBiggestStoreTag,
-                   LSQqueue[knownBiggestSameAddrStore].ROBTag);
-      if (unknownBiggestStore == index && knownBiggestSameAddrStore == index) {
-        writeValue(LSQqueue[index].value, i);
-      }
+                   LSQqueue[knownBiggestSameAddrStore].ROBTag),
+          unknownBiggestStore == index && knownBiggestSameAddrStore == index};
     } else if (LSQqueue[i].type == Operation::Store) {
       if (!LSQqueue[i].isAddressReady) {
         unknownBiggestStore = i;
@@ -106,29 +105,31 @@ void LSQ::DataBroadcast(int index) {
       }
     }
   }
+  return plan;
 }
 
-void LSQ::AddressBroadcast(int index) {
+auto LSQ::planAddressForward(int index, uint32_t address) const
+    -> LSQStoreToLoadForwardPlan {
+  LSQStoreToLoadForwardPlan plan{};
   if (LSQqueue[index].type == Operation::Store) {
     if (index == ((tail - 1) & 0x3F))
-      return;
+      return plan;
     int unknownBiggestStore = index;
     int knownBiggestSameAddrStore = index;
     for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
       if (LSQqueue[i].type == Operation::Load &&
-          LSQqueue[i].address == LSQqueue[index].address) {
-        LSQqueue[i].knownBiggestStoreTag =
+          LSQqueue[i].address == address) {
+        plan.writes[plan.count++] = {
+            static_cast<uint8_t>(i), LSQqueue[index].value,
             std::max(LSQqueue[i].knownBiggestStoreTag,
-                     LSQqueue[knownBiggestSameAddrStore].ROBTag);
-        if (unknownBiggestStore == index &&
-            knownBiggestSameAddrStore == index &&
-            LSQqueue[index].valueState == ValueState::READY) {
-          writeValue(LSQqueue[index].value, i);
-        }
+                     LSQqueue[knownBiggestSameAddrStore].ROBTag),
+            unknownBiggestStore == index &&
+                knownBiggestSameAddrStore == index &&
+                LSQqueue[index].valueState == ValueState::READY};
       } else if (LSQqueue[i].type == Operation::Store) {
         if (!LSQqueue[i].isAddressReady) {
           unknownBiggestStore = i;
-        } else if (LSQqueue[i].address == LSQqueue[index].address) {
+        } else if (LSQqueue[i].address == address) {
           knownBiggestSameAddrStore = i;
         }
       }
@@ -137,19 +138,28 @@ void LSQ::AddressBroadcast(int index) {
     int unknownBiggestStore = index;
     for (int i = index; i != ((head - 1) & 0x3F); i = (i + 63) & 0x3F) {
       if (LSQqueue[i].type == Operation::Store) {
-        if (LSQqueue[i].isAddressReady &&
-            LSQqueue[i].address == LSQqueue[index].address) {
-          if (unknownBiggestStore == index &&
-              LSQqueue[i].valueState == ValueState::READY) {
-            writeValue(LSQqueue[i].value, index);
-          }
-          LSQqueue[index].knownBiggestStoreTag = LSQqueue[i].ROBTag;
+        if (LSQqueue[i].isAddressReady && LSQqueue[i].address == address) {
+          plan.writes[plan.count++] = {
+              static_cast<uint8_t>(index), LSQqueue[i].value,
+              LSQqueue[i].ROBTag,
+              unknownBiggestStore == index &&
+                  LSQqueue[i].valueState == ValueState::READY};
           break;
         } else if (!LSQqueue[i].isAddressReady) {
           unknownBiggestStore = i;
         }
       }
     }
+  }
+  return plan;
+}
+
+void LSQ::applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan) {
+  for (uint8_t k = 0; k < plan.count; ++k) {
+    LSQWrite w = plan.writes[k];
+    LSQqueue[w.index].knownBiggestStoreTag = w.knownTag;
+    if (w.setValue)
+      writeValue(w.value, w.index);
   }
 }
 
@@ -168,15 +178,14 @@ int LSQ::LoadDetect() const {
       if (hasUnknownStore)
         break;
       if (LSQqueue[cur].valueState == ValueState::NOTREADY) {
-        // An older same-address store whose value is still pending would
-        // overwrite this load later (via its DataBroadcast); dispatching to
-        // memory now could read a stale value. Wait for the forwarding.
+        // An older same-address store still in the queue would overwrite
+        // this load later; dispatching to memory now could read a stale
+        // value. Wait until the store is dispatched (popped) first.
         bool hasPendingSameAddrStore = false;
         for (int i = head; i != cur; i = (i + 1) & 0x3F) {
           if (LSQqueue[i].type == Operation::Store &&
               LSQqueue[i].isAddressReady &&
-              LSQqueue[i].address == LSQqueue[cur].address &&
-              LSQqueue[i].valueState != ValueState::READY) {
+              LSQqueue[i].address == LSQqueue[cur].address) {
             hasPendingSameAddrStore = true;
             break;
           }

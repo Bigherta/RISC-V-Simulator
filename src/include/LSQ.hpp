@@ -21,6 +21,16 @@ struct LSQEntry {
   bool isUnsigned;
   bool isCDBBroadcast;
 };
+struct LSQWrite {
+  uint8_t index;
+  int32_t value;
+  int knownTag;
+  bool setValue;
+};
+struct LSQStoreToLoadForwardPlan {
+  LSQWrite writes[LSQ_CAP];
+  uint8_t count;
+};
 
 class LSQ {
 private:
@@ -48,8 +58,11 @@ public:
   auto getEntry(int index) const -> LSQEntry;
   void setValueState(int index, ValueState state);
   void setCDBBroadcast(int index);
-  void DataBroadcast(int index);
-  void AddressBroadcast(int index);
+  auto planDataForward(int index, int32_t value) const
+      -> LSQStoreToLoadForwardPlan;
+  auto planAddressForward(int index, uint32_t address) const
+      -> LSQStoreToLoadForwardPlan;
+  void applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan);
   int CDBDetect() const;
   int LoadDetect() const;
   void flush(int tag);

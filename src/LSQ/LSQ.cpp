@@ -26,9 +26,9 @@ uint8_t LSQ::getHead() const { return head; }
 uint8_t LSQ::getTail() const { return tail; }
 
 int LSQ::getIndex(int ROBTag) const {
-  for (int i = 0; i < LSQ_CAP; i++) {
-    if (LSQqueue[i].ROBTag == ROBTag)
-      return i;
+  for (uint8_t cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+    if (LSQqueue[cur].ROBTag == ROBTag)
+      return cur;
   }
   return -1;
 }

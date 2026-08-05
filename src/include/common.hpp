@@ -13,8 +13,10 @@ constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
 constexpr int BRU_CAP = 4;
-constexpr int BHT_CAP = 1 << 16;
-constexpr int SELECTOR_CAP = 1 << 16;
+constexpr int BHT_CAP = 1 << 12;
+constexpr int SELECTOR_CAP = 1 << 12;
+constexpr int HISTORY_BIT = 12;
+constexpr int HISTORY_MASK = (1 << HISTORY_BIT) - 1;
 constexpr int BTB_CAP = 4096;
 constexpr int RAS_CAP = 32;
 enum class Operation {

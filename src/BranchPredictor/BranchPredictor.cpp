@@ -57,7 +57,7 @@ void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
   }
 }
 void BranchPredictor::shiftGHR(bool taken) {
-  GHR = ((GHR << 1) | (taken ? 1 : 0));
+  GHR = ((GHR << 1) | (taken ? 1 : 0)) & HISTORY_MASK;
 }
 void BranchPredictor::RAS_push(uint32_t addr) {
   if (RAS_top == RAS_CAP)

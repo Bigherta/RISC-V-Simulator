@@ -1,6 +1,7 @@
 #include "../include/CPU.hpp"
 #include "../include/util.hpp"
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 
 CPU::CPU(Memory mem) : CPUstate(mem), InstructMem(mem), DataMem(mem) {}
@@ -42,6 +43,10 @@ void CPU::fetch() {
       if (!CPUstate.BPModule.RAS_empty())
         predictedPC = CPUstate.BPModule.RAS_pop();
     }
+    if (opcode == 0b1100011)
+      CPUstate.BPModule.shiftGHR(prediction.taken);
+    else if (opcode == 0b1101111 || opcode == 0b1100111)
+      CPUstate.BPModule.shiftGHR(true);
     CPUstate.INQModule.push(raw_inst, programCounter, predictedPC, ckpt);
     CPUstate.programCounter = predictedPC;
   }
@@ -832,8 +837,9 @@ void CPU::writeBack() {
         BranchSquash.SquashPC = actualPC;
         BranchSquash.SquashTag = BranchResult.robTag;
       }
+      auto entry = ROBModule.getEntry(index);
       CPUstate.BPModule.update(BranchResult.pcFrom, taken,
-                               BranchResult.pcResult);
+                               BranchResult.pcResult, entry.ras_ckpt.GHR);
       CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
     }
     CPUstate.BRUModule.remove(BranchResult.robTag);
@@ -893,7 +899,8 @@ void CPU::writeBack() {
       if (pc == ROBModule.getPredictedPC(robIndex)) {
         ++branchCorrect;
       }
-      CPUstate.BPModule.update(robEntry.pc, true, static_cast<int32_t>(pc));
+      CPUstate.BPModule.update(robEntry.pc, true, static_cast<int32_t>(pc),
+                               robEntry.ras_ckpt.GHR);
       if (pc != ROBModule.getPredictedPC(robIndex)) {
         JumpSquash.needSquash = true;
         JumpSquash.SquashPC = pc;
@@ -943,20 +950,20 @@ void CPU::commit() {
   }
 }
 void CPU::read() {
-  RSModule = CPUstate.RSModule;
-  REGModule = CPUstate.REGModule;
-  ROBModule = CPUstate.ROBModule;
-  ALUModule = CPUstate.ALUModule;
-  BRUModule = CPUstate.BRUModule;
-  LSQModule = CPUstate.LSQModule;
-  INQModule = CPUstate.INQModule;
-  BPModule = CPUstate.BPModule;
+  memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
+  memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
+  memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
+  memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
+  memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
+  memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
+  memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));
+  memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
   DataMem.snapshotFrom(CPUstate.DataMem);
   programCounter = CPUstate.programCounter;
   haltFetched = CPUstate.haltFetched;
   haltCommitted = CPUstate.haltCommitted;
   haltRd = CPUstate.haltRd;
-  flushArbiter = CPUstate.flushArbiter;
+  memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
   squashDetect = CPUstate.flushArbiter.arbitResult();
   cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
 }

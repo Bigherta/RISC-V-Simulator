@@ -25,7 +25,7 @@ struct ROBEntry {
   uint32_t predictedPC = 0;
   int32_t pc = 0;
   bool halt = false;
-  RASCheckPoint ras_ckpt;
+  BranchPredictorCkpt ras_ckpt;
   ROBEntry() : type(ROBType::REGISTER), state(ROBState::Waiting) {}
   ROBEntry(ROBType type_) : type(type_), state(ROBState::Waiting) {}
 };

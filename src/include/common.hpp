@@ -14,6 +14,7 @@ constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int BHT_CAP = 1 << 16;
+constexpr int SELECTOR_CAP = 1 << 16;
 constexpr int BTB_CAP = 4096;
 constexpr int RAS_CAP = 32;
 enum class Operation {
@@ -138,8 +139,9 @@ struct BTBEntry {
   bool valid;
 };
 
-struct RASCheckPoint {
+struct BranchPredictorCkpt {
   int top;
   uint32_t RAS[RAS_CAP];
+  uint16_t GHR;
 };
 #endif // COMMON_HPP

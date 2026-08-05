@@ -9,7 +9,7 @@ private:
   BTBEntry BTB[BTB_CAP] = {};
   uint32_t RAS[RAS_CAP] = {};
   int RAS_top = 0;
-
+  uint16_t GHR = 0;
 public:
   PredictInfo predict(int32_t pc);
   void update(int32_t pc, bool taken, int32_t target);

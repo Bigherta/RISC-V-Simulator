@@ -36,10 +36,11 @@ void CPU::fetch() {
     auto rd = (raw_inst >> 7) & 0x1F;
     auto rs1 = (raw_inst >> 15) & 0x1F;
     auto imm_i = (raw_inst >> 20) & 0xFFF;
-    if (opcode == 0b1101111 && rd == 1) {
+    if (opcode == 0b1101111 && (rd == 1 || rd == 5)) {
       if (!CPUstate.BPModule.RAS_full())
         CPUstate.BPModule.RAS_push(programCounter + 4);
-    } else if (opcode == 0b1100111 && rd == 0 && rs1 == 1 && imm_i == 0) {
+    } else if (opcode == 0b1100111 && rd == 0 && (rs1 == 1 || rs1 == 5) &&
+               imm_i == 0) {
       if (!CPUstate.BPModule.RAS_empty())
         predictedPC = CPUstate.BPModule.RAS_pop();
     }

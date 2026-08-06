@@ -76,15 +76,10 @@ bool BranchPredictor::RAS_empty() const { return RAS_top == 0; }
 bool BranchPredictor::RAS_full() const { return RAS_top == RAS_CAP; }
 
 BranchPredictorCkpt BranchPredictor::snapshotCheckPoint() const {
-  BranchPredictorCkpt ckpt;
-  memcpy(ckpt.RAS, RAS, sizeof(RAS));
-  ckpt.top = RAS_top;
-  ckpt.GHR = GHR;
-  return ckpt;
+  return {RAS_top, GHR};
 }
 
 void BranchPredictor::recoverCheckPoint(BranchPredictorCkpt ckpt) {
-  memcpy(RAS, ckpt.RAS, sizeof(RAS));
   RAS_top = ckpt.top;
   GHR = ckpt.GHR;
 }

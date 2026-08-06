@@ -18,7 +18,7 @@ constexpr int SELECTOR_CAP = 1 << 12;
 constexpr int HISTORY_BIT = 12;
 constexpr int HISTORY_MASK = (1 << HISTORY_BIT) - 1;
 constexpr int BTB_CAP = 4096;
-constexpr int RAS_CAP = 32;
+constexpr int RAS_CAP = 128;
 enum class Operation {
   ADD,
   SUB,
@@ -143,7 +143,6 @@ struct BTBEntry {
 
 struct BranchPredictorCkpt {
   int top;
-  uint32_t RAS[RAS_CAP];
   uint16_t GHR;
 };
 #endif // COMMON_HPP

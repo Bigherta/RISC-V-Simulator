@@ -1,7 +1,6 @@
 #include "../include/ROB.hpp"
 #include <cstdint>
 #include <stdexcept>
-#include <string>
 
 bool ROB::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
@@ -47,10 +46,16 @@ void ROB::writeROBPredictedPC(uint32_t pc, int index) {
     return;
   ROBqueue[index].predictedPC = pc;
 }
-void ROB::writeROBState(ROBState state, int index) {
+void ROB::setROBCommitReady(int index){
   if (index < 0 || index >= ROB_CAP)
     return;
-  ROBqueue[index].state = state;
+  ROBqueue[index].isCommitReady = true;
+}
+
+void ROB::setROBValueValid(int index){
+  if (index < 0 || index >= ROB_CAP)
+    return;
+  ROBqueue[index].isValueValid = true;
 }
 
 int ROB::getPredictedPC(int index) const { return ROBqueue[index].predictedPC; }
@@ -59,7 +64,12 @@ int ROB::ClearRATDest() const { return peek().dest; }
 
 int ROB::headROB() const { return peek().tag; }
 
-ROBState ROB::headState() const { return peek().state; }
+bool ROB::isHeadCommitReady() const{
+  return peek().isCommitReady;
+}
+bool ROB::isHeadValueValid() const{
+  return peek().isValueValid;
+}
 
 uint64_t ROB::currentTag() const { return ROB_Tag; }
 

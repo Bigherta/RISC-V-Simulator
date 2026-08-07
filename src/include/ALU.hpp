@@ -10,8 +10,8 @@ private:
 public:
   bool isFull() const;
   bool isEmpty() const;
-  static int32_t ALUCalculate(int32_t op1, int32_t op2, Operation op);
-  void push(ExecuteResult);
+  void push(int32_t op1, int32_t op2, Operation op, int robTag,
+            bool isAddress, bool isControl);
   void remove(int robTag);
   void flush(int tag);
   ExecuteResult peek() const;

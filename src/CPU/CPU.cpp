@@ -79,7 +79,7 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   } else {
     auto op1Index = ROBModule.getIndex(op1.robTag);
     if (op1Index != -1 &&
-        (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op1Index).isValueValid)) {
       IntegerRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
       auto bypass = CDBBypass(op1.robTag);
@@ -99,7 +99,7 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
     } else {
       auto op2Index = ROBModule.getIndex(op2.robTag);
       if (op2Index != -1 &&
-          (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
+          (ROBModule.getEntry(op2Index).isValueValid)) {
         IntegerRS.vk = ROBModule.getEntry(op2Index).value;
       } else {
         auto bypass = CDBBypass(op2.robTag);
@@ -119,7 +119,7 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   if (isControl) {
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
-    newROB.state = ROBState::ValueReady;
+    newROB.isValueValid = true;
     newROB.ras_ckpt = INQModule.peekRASCkpt();
   }
   newROB.tag = CPUstate.ROBModule.push(newROB);
@@ -152,7 +152,7 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   if (isControl) {
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
-    newROB.state = ROBState::ValueReady;
+    newROB.isValueValid = true;
     newROB.ras_ckpt = INQModule.peekRASCkpt();
   }
   newROB.tag = CPUstate.ROBModule.push(newROB);
@@ -183,7 +183,7 @@ IssueResult CPU::issue_B(Instruct inst) {
   } else {
     auto op1Index = ROBModule.getIndex(op1.robTag);
     if (op1Index != -1 &&
-        (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op1Index).isValueValid)) {
       BranchRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
       auto bypass = CDBBypass(op1.robTag);
@@ -200,7 +200,7 @@ IssueResult CPU::issue_B(Instruct inst) {
   } else {
     auto op2Index = ROBModule.getIndex(op2.robTag);
     if (op2Index != -1 &&
-        (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op2Index).isValueValid)) {
       BranchRS.vk = ROBModule.getEntry(op2Index).value;
     } else {
       auto bypass = CDBBypass(op2.robTag);
@@ -242,7 +242,7 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   } else {
     auto op1Index = ROBModule.getIndex(op1.robTag);
     if (op1Index != -1 &&
-        (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op1Index).isValueValid)) {
       LoadRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
       auto bypass = CDBBypass(op1.robTag);
@@ -294,7 +294,7 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   } else {
     auto op1Index = ROBModule.getIndex(op1.robTag);
     if (op1Index != -1 &&
-        (ROBModule.getEntry(op1Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op1Index).isValueValid)) {
       StoreRS.vj = ROBModule.getEntry(op1Index).value;
     } else {
       auto bypass = CDBBypass(op1.robTag);
@@ -315,7 +315,7 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   } else {
     auto op2Index = ROBModule.getIndex(op2.robTag);
     if (op2Index != -1 &&
-        (ROBModule.getEntry(op2Index).state >= ROBState::ValueReady)) {
+        (ROBModule.getEntry(op2Index).isValueValid)) {
       MicroRS.vrs2 = ROBModule.getEntry(op2Index).value;
     } else {
       auto bypass = CDBBypass(op2.robTag);
@@ -357,7 +357,7 @@ void CPU::issue() {
   if (!squashDetect.needSquash) {
     RATWritePort commitPort{};
     if (!ROBModule.isEmpty() &&
-        ROBModule.headState() == ROBState::CommitReady) {
+        ROBModule.isHeadCommitReady()) {
       auto rob_entry = ROBModule.peek();
       if ((rob_entry.type == ROBType::REGISTER ||
            rob_entry.type == ROBType::LINK) &&
@@ -380,7 +380,7 @@ void CPU::issue() {
             ROBEntry newROB(ROBType::REGISTER);
             newROB.dest = inst.rd;
             newROB.halt = true;
-            newROB.state = ROBState::CommitReady;
+            newROB.isCommitReady = true;
             newROB.tag = CPUstate.ROBModule.push(newROB);
             res = {false, inst.rd, newROB.tag};
           } else {
@@ -609,18 +609,10 @@ void CPU::execute() {
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash &&
            Execute_RS.ROB_dest < squashDetect.SquashTag)) {
-        auto result =
-            ALU::ALUCalculate(Execute_RS.vj, Execute_RS.vk, Execute_RS.op);
-        auto index = ROBModule.getIndex(Execute_RS.ROB_dest);
-        if (Execute_RS_type == 0 && !isMemoryOp(Execute_RS.op) &&
-            !isControlOp(Execute_RS.op) && index >= 0 &&
-            ROBModule.getEntry(index).type == ROBType::REGISTER) {
-          CPUstate.ROBModule.writeROBState(ROBState::ValueReady, index);
-          CPUstate.ROBModule.writeROBValue(result, index);
-        }
-        CPUstate.ALUModule.push({result, Execute_RS.ROB_dest,
-                                 isMemoryOp(Execute_RS.op),
-                                 isControlOp(Execute_RS.op)});
+        CPUstate.ALUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
+                                Execute_RS.ROB_dest,
+                                isMemoryOp(Execute_RS.op),
+                                isControlOp(Execute_RS.op));
         switch (Execute_RS_type) {
         case 0:
           CPUstate.RSModule.IntegerRS[Execute_RS_index].free = true;
@@ -695,7 +687,7 @@ void CPU::execute() {
     int storeIndex = ROBModule.getIndex(storeEntry.ROBTag);
     if (storeIndex == -1 ||
         (storeIndex == ROBModule.getHead() &&
-         ROBModule.getEntry(storeIndex).state == ROBState::CommitReady)) {
+         ROBModule.getEntry(storeIndex).isCommitReady)) {
       MemRequest newRequest{};
       newRequest.address = storeEntry.address;
       newRequest.value = storeEntry.value;
@@ -739,7 +731,7 @@ void CPU::execute() {
         auto index = ROBModule.getIndex(lsqEntry.ROBTag);
         if (index != -1) {
           CPUstate.ROBModule.writeROBValue(lsqEntry.value, index);
-          CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
+          CPUstate.ROBModule.setROBCommitReady(index);
         }
       }
     }
@@ -840,7 +832,7 @@ void CPU::writeBack() {
       auto entry = ROBModule.getEntry(index);
       CPUstate.BPModule.update(BranchResult.pcFrom, taken,
                                BranchResult.pcResult, entry.ras_ckpt.GHR);
-      CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
+      CPUstate.ROBModule.setROBCommitReady(index);
     }
     CPUstate.BRUModule.remove(BranchResult.robTag);
   }
@@ -871,7 +863,9 @@ void CPU::writeBack() {
     auto index = ROBModule.getIndex(tag);
     CDBBroadcast(tag, value);
     if (index != -1) {
-      CPUstate.ROBModule.writeROBState(ROBState::CommitReady, index);
+      CPUstate.ROBModule.setROBCommitReady(index);
+      CPUstate.ROBModule.setROBValueValid(index);
+      CPUstate.ROBModule.writeROBValue(value, index);
     }
     if (cdbOut.lsqGranted) {
       auto lsqIndex = LSQModule.getIndex(tag);
@@ -906,7 +900,9 @@ void CPU::writeBack() {
         JumpSquash.SquashPC = pc;
         JumpSquash.SquashTag = robTag;
       }
-      CPUstate.ROBModule.writeROBState(ROBState::CommitReady, robIndex);
+      CPUstate.ROBModule.setROBCommitReady(robIndex);
+      CPUstate.ROBModule.setROBValueValid(robIndex);
+      CPUstate.ROBModule.writeROBValue(value, robIndex);
     }
   }
   if (BranchSquash.needSquash && JumpSquash.needSquash) {
@@ -937,7 +933,7 @@ void CPU::commit() {
       break;
     }
   }
-  if (ROBModule.isEmpty() || ROBModule.headState() != ROBState::CommitReady)
+  if (ROBModule.isEmpty() || !ROBModule.isHeadCommitReady())
     return;
   auto rob_entry = ROBModule.peek();
   rob_entry = CPUstate.ROBModule.pop();
@@ -1050,13 +1046,13 @@ void CPU::run() {
   uint64_t clock = 0;
   while (!finish) {
     read();
+    fetch();
     issue();
-    flush();
+    writeBack();
     execute();
     commit();
-    writeBack();
+    flush();
     decode();
-    fetch();
     CPUstate.REGModule.resetX0();
     ++clock;
     finish = haltCommitted && INQModule.isEmpty() && ROBModule.isEmpty();

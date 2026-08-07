@@ -9,25 +9,19 @@ enum class ROBType {
   STORE,
   LINK,
 };
-
-enum class ROBState {
-  Waiting,
-  ValueReady,
-  CommitReady,
-};
-
 struct ROBEntry {
-  ROBType type;
-  ROBState state;
-  int tag;
-  int dest; // if type is REGISTER, record its destination
+  ROBType type = ROBType::REGISTER;
+  bool isCommitReady = false;
+  bool isValueValid = false;
+  int tag = 0;
+  int dest = 0; // if type is REGISTER, record its destination
   int32_t value = 0;
   uint32_t predictedPC = 0;
   int32_t pc = 0;
   bool halt = false;
   BranchPredictorCkpt ras_ckpt;
-  ROBEntry() : type(ROBType::REGISTER), state(ROBState::Waiting) {}
-  ROBEntry(ROBType type_) : type(type_), state(ROBState::Waiting) {}
+  ROBEntry() = default;
+  ROBEntry(ROBType type_) : type(type_) {}
 };
 
 class ROB {
@@ -45,7 +39,8 @@ public:
   bool isEmpty() const;
   int ClearRATDest() const;
   int headROB() const;
-  ROBState headState() const;
+  bool isHeadCommitReady() const;
+  bool isHeadValueValid() const;
   int push(ROBEntry entry);
   ROBEntry peek() const;
   ROBEntry pop();
@@ -56,7 +51,8 @@ public:
   int getPredictedPC(int index) const;
   void writeROBValue(int32_t value, int index);
   void writeROBPredictedPC(uint32_t pc, int index);
-  void writeROBState(ROBState state, int index);
+  void setROBCommitReady(int index);
+  void setROBValueValid(int index);
   uint64_t currentTag() const;
   void flush(int tag);
 };

@@ -1,28 +1,18 @@
 cmake_minimum_required(VERSION 3.10)
 project(CPU_Simulator LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CPU_SOURCES
-    src/CPU/CPU.cpp
-    src/Decoder/Decoder.cpp
-    src/Memory/Memory.cpp
-    src/ROB/ROB.cpp
-    src/ALU/ALU.cpp
-    src/BRU/BRU.cpp
-    src/LSQ/LSQ.cpp
-    src/Register/Register.cpp
-    src/INQ/INQ.cpp
-    src/BranchPredictor/BranchPredictor.cpp
-)
+include_directories(${CMAKE_SOURCE_DIR}/src/include/helper)
+include_directories(${CMAKE_SOURCE_DIR}/src/include)
 
-add_executable(code
-    src/main/main.cpp
-    ${CPU_SOURCES}
-)
+file(GLOB_RECURSE CPU_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
-target_include_directories(code PRIVATE src/include)
+add_executable(code ${CPU_SOURCES})
+
+# 开发期开启模板的调试检测（Register 双写断言等）
+target_compile_definitions(code PRIVATE _DEBUG)
 
 set_target_properties(code PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}

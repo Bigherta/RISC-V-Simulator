@@ -40,6 +40,10 @@ struct INQ : Module<INQ_Input, INQ_Output, INQ_Private> {
 	// read helpers
 	bool isEmpty() const;
 	bool isFull() const;
+	// fetch backpressure with in-flight margin (fetch->push latency is 2):
+	// stall before the INQ actually fills, so a push already in flight always
+	// finds a free slot and no instruction is silently dropped.
+	bool almostFull() const;
 	// head getters (no-arg, wire-bindable)
 	bool headValid() const;
 	bool headIsHalt() const;

@@ -1,4 +1,7 @@
 #include "../include/ROB.hpp"
+#include <cstdio>
+
+static unsigned long long g_cyc = 0;
 
 namespace dark {
 
@@ -144,6 +147,7 @@ void ROB::flush(max_size_t flushTag) {
 }
 
 void ROB::work() {
+	++g_cyc;
 	// 1. flush: truncate entries with tag > squash_tag (mutually exclusive with push)
 	if (squash.valid) {
 		flush(to_unsigned(squash.tag));
@@ -154,6 +158,9 @@ void ROB::work() {
 		int h = static_cast<int>(to_unsigned(head));
 		commit_info.halt <= (getHalt(h) ? 1u : 0u);
 		commit_info.dest <= getDest(h);
+		fprintf(stderr, "C cyc=%llu h=%d dest=%llu pc=%llu val=%d cr=%d\n", g_cyc,
+				h, getDest(h), getPC(h), static_cast<int>(getValue(h)),
+				static_cast<int>(to_unsigned(slot_commit_ready[h])));
 		pop();
 	}
 	// 3. exec: type-dependent write (matches CPU.cpp:615-620 / writeBack CDB branches)

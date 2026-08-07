@@ -1,6 +1,8 @@
 #include "../include/RAT.hpp"
 #include "../include/ROB.hpp" // rob_ptr squash repair traversal (complete type)
 
+static unsigned long long g_cyc = 0;
+
 namespace dark {
 
 namespace {
@@ -435,6 +437,7 @@ max_size_t RAT::ratRead(int reg) const {
 }
 
 void RAT::work() {
+	++g_cyc;
 	if (squash.valid) {
 		// RAT repair (ports CPU.cpp:1014-1034): roll renames younger than the
 		// squash point back to the newest in-order writer (or 0 = no rename)
@@ -492,6 +495,14 @@ void RAT::work() {
 	bool issue_write = issue_valid && issue_reg != 0 // x0: no rename (CPU.cpp:133)
 		&& iss != IssType::Branch && iss != IssType::Store;
 	max_size_t issue_tag = issue_valid ? to_unsigned(rob.rob_tag) + 1 : 0;
+	{
+		if (to_unsigned(dec.pc) >= 4088u && to_unsigned(dec.pc) <= 5660u) {
+			fprintf(stderr, "R cyc=%llu pc=%llu rd=%llu iv=%d iw=%d tag=%llu a0=%llu\n",
+					g_cyc, to_unsigned(dec.pc), issue_reg,
+					static_cast<int>(issue_valid), static_cast<int>(issue_write),
+					issue_tag, to_unsigned(rat_table[10]));
+		}
+	}
 	// RATSEL (ported from Arbiter.hpp:16-23; commit clears to 0)
 	bool commit_write = commit_valid;
 	if (issue_write && commit_valid && issue_reg == commit_reg) {

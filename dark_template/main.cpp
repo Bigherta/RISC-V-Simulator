@@ -17,6 +17,7 @@
 #include "BRU.hpp"
 #include "FLUSH_ARB.hpp"
 
+
 #include <iostream>
 
 using namespace dark;
@@ -107,7 +108,7 @@ int main() {
 	};
 	// ---- IMEM <- BPU prediction (combined getters, same-cycle) ----
 	imem.pc = [&]() { return pc_reg.getPC(); };
-	imem.inq_full = [&]() { return inq.isFull(); };
+	imem.inq_full = [&]() { return inq.almostFull(); }; // fetch backpressure w/ in-flight margin
 	imem.squash_valid = [&]() -> auto & { return flusher.valid; };
 	imem.pred_taken = [&]() {
 		return bpu.predict(static_cast<int32_t>(pc_reg.getPC())).taken;
@@ -213,6 +214,7 @@ int main() {
 	int_rs.push.vk = [&]() { return rat.intPushVk(); };
 	int_rs.push.qk = [&]() { return rat.intPushQk(); };
 	int_rs.push.rob_tag = [&]() { return rat.intPushRobTag(); };
+	int_rs.push.pc = [&]() -> auto & { return rat.dec.pc; };
 	int_rs.cdb.valid = [&]() { return cdb_arb.resultValid(); };
 	int_rs.cdb.tag = [&]() { return cdb_arb.resultTag(); };
 	int_rs.cdb.value = [&]() { return cdb_arb.resultValue(); };
@@ -377,6 +379,7 @@ int main() {
 	reg.head_dest = [&]() { return rob.headDest(); };
 	reg.head_value = [&]() { return rob.headValue(); };
 	reg.head_type = [&]() { return static_cast<max_size_t>(rob.headType()); };
+	reg.head_tag = [&]() { return rob.headTag(); };
 	// ---- LSQ ----
 	lsq.push.valid = [&]() { return rat.lsqPushValid(); };
 	lsq.push.is_load = [&]() { return rat.lsqPushIsLoad(); };

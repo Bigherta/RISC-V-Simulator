@@ -1,4 +1,8 @@
 #include "../include/INQ.hpp"
+#include <cstdio>
+#include <cstdlib>
+
+static unsigned long long g_cyc = 0;
 
 namespace dark {
 
@@ -8,6 +12,15 @@ bool INQ::isEmpty() const {
 
 bool INQ::isFull() const {
 	return ((to_unsigned(tail) + 1) & (INQ_CAP - 1)) == to_unsigned(head);
+}
+
+bool INQ::almostFull() const {
+	// usable capacity is INQ_CAP-1 (one slot reserved by the ring full check);
+	// keep FETCH_MARGIN slots free for pushes already in flight (fetch -> INQ
+	// takes 2 cycles), so they never arrive at a full queue.
+	constexpr unsigned FETCH_MARGIN = 3;
+	unsigned occ = (to_unsigned(tail) - to_unsigned(head)) & (INQ_CAP - 1);
+	return occ >= INQ_CAP - 1 - FETCH_MARGIN;
 }
 
 bool INQ::headValid() const {
@@ -57,17 +70,34 @@ void INQ::clear() {
 }
 
 void INQ::work() {
+	++g_cyc;
 	// squash: clear queue (aligns CPU.cpp:11 INQModule.clear())
 	if (squash.valid) {
 		clear();
 		return;
+	}
+	{
+		if (true) {
+			fprintf(stderr, "I cyc=%llu head=%u tail=%u :", g_cyc,
+					to_unsigned(head), to_unsigned(tail));
+			for (int k = 0; k < INQ_CAP; ++k) {
+				fprintf(stderr, " %u", to_unsigned(slot_pc[k]));
+			}
+			fprintf(stderr, "\n");
+		}
 	}
 	// pop: Decoder consumed the head this cycle (same-cycle, no duplicate)
 	if (pop_valid && !isEmpty()) {
 		pop();
 	}
 	// push: fetch decision (M3 stub / M6 IMEM)
-	if (push_req.valid && !isFull()) {
+	if (push_req.valid) {
+		if (isFull()) {
+			fprintf(stderr, "FATAL cyc=%llu: INQ dropped fetch pc=%u\n",
+					g_cyc, to_unsigned(push_req.pc));
+			std::abort();
+		}
+		fprintf(stderr, "N cyc=%llu pushpc=%u\n", g_cyc, to_unsigned(push_req.pc));
 		push(to_unsigned(push_req.raw), to_unsigned(push_req.pc),
 			 to_unsigned(push_req.predpc), to_unsigned(push_req.ckpt));
 	}

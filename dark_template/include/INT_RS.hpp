@@ -14,6 +14,7 @@ struct IntPush { // bound to RAT intPush* combined getters (q == 0 means ready)
 	Wire<32> vk;
 	Wire<31> qk;
 	Wire<31> rob_tag;
+	Wire<32> pc;
 };
 
 struct INT_RS_Input {

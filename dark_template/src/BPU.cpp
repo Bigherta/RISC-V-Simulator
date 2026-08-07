@@ -1,4 +1,7 @@
 #include "../include/BPU.hpp"
+#include <cstdio>
+
+static unsigned long long g_cyc = 0;
 
 namespace dark {
 
@@ -54,6 +57,12 @@ struct PendingUpdate {
 } // namespace
 
 void BPU::work() {
+	++g_cyc;
+	auto probeTop = [&](const char *ev, max_size_t pc_val) {
+		if (g_cyc < 550) return;
+		fprintf(stderr, "B %llu %s pc=%llu top=%llu\n", g_cyc, ev,
+				pc_val, to_unsigned(ras_top));
+	};
 	// 1. one-shot init: PHT/selector start at 1 (weakly not-taken,
 	//    ports BranchPredictor constructor memset(1))
 	if (static_cast<bool>(inited) == false) {
@@ -70,8 +79,12 @@ void BPU::work() {
 	//    entry's checkpoint). The squash cycle never fetches (fetch gated).
 	if (squash.valid && recover_ok) {
 		auto ckpt = to_unsigned(recover_ckpt);
-		ras_top <= ((ckpt >> 16) & 0xFFu);
+		auto ckptTop = (ckpt >> 16) & 0xFFu;
+		fprintf(stderr, "B %llu RECOVER ckpt_top=%u old_top=%llu\n",
+				g_cyc, ckptTop, to_unsigned(ras_top));
+		ras_top <= ckptTop;
 		GHR <= (ckpt & 0xFFFFu);
+		fprintf(stderr, "B %llu RECOVER new_top=%u\n", g_cyc, ckptTop);
 	}
 	// 3. fetch-time state mutations (ports CPU.cpp:39-50): synchronous with
 	//    the fetch because fetch_raw/fetch_valid are combined wires over the
@@ -83,15 +96,22 @@ void BPU::work() {
 		auto rs1 = (raw >> 15) & 0x1Fu;
 		auto imm_i = (raw >> 20) & 0xFFFu;
 		auto p = to_unsigned(pc);
+		auto oldTop = to_unsigned(ras_top);
 		if (opcode == 0b1101111u && (rd == 1 || rd == 5)) { // JAL link: push ra
 			if (RAS_full() == false) {
 				ras[to_unsigned(ras_top)] <= p + 4;
-				ras_top <= to_unsigned(ras_top) + 1;
+				ras_top <= oldTop + 1;
+				fprintf(stderr, "B %llu PUSH  pc=%llu val=%llu old_top=%llu new_top=%llu\n",
+						g_cyc, p, static_cast<max_size_t>(p + 4), oldTop, oldTop + 1);
 			}
 		} else if (opcode == 0b1100111u && rd == 0 && (rs1 == 1 || rs1 == 5)
 				   && imm_i == 0) { // JALR link: pop ra
 			if (RAS_empty() == false) {
-				ras_top <= to_unsigned(ras_top) - 1;
+				ras_top <= oldTop - 1;
+				fprintf(stderr, "B %llu POP   pc=%llu old_top=%llu new_top=%llu\n",
+						g_cyc, p, oldTop, oldTop - 1);
+			} else {
+				fprintf(stderr, "B %llu POP-EMPTY pc=%llu top=%llu\n", g_cyc, p, oldTop);
 			}
 		}
 		if (opcode == 0b1100011u) { // B: shift GHR with the prediction
@@ -180,6 +200,7 @@ void BPU::work() {
 			}
 		}
 	}
+	probeTop("END", 0);
 }
 
 } // namespace dark

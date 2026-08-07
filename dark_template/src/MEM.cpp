@@ -1,4 +1,8 @@
 #include "../include/MEM.hpp"
+#include <cstdio>
+#include <iostream>
+
+static unsigned long long g_cyc = 0;
 
 namespace dark {
 
@@ -60,6 +64,9 @@ max_size_t IMEM::computeFetchRaw() const { // raw of the current fetch (old stat
 		return 0;
 	}
 	auto p = to_unsigned(pc);
+	if (p + 4 > MEM_SIZE) {
+		return 0; // fetch past the backing (never legitimately reached)
+	}
 	return static_cast<max_size_t>(mem[p])
 		| (static_cast<max_size_t>(mem[p + 1]) << 8)
 		| (static_cast<max_size_t>(mem[p + 2]) << 16)
@@ -97,7 +104,7 @@ void IMEM::work() { // ports CPU::fetch (CPU.cpp:9-54)
 		return;
 	}
 	// 2. read + halt detect (outside push gate, CPU.cpp:26-29)
-	if (halt_fetched == 0) {
+	if (halt_fetched == 0 && p + 4 <= MEM_SIZE) {
 		raw = static_cast<uint32_t>(mem[p])
 			| (static_cast<uint32_t>(mem[p + 1]) << 8)
 			| (static_cast<uint32_t>(mem[p + 2]) << 16)
@@ -107,6 +114,11 @@ void IMEM::work() { // ports CPU::fetch (CPU.cpp:9-54)
 		}
 	}
 	// 3. push (CPU.cpp:30-53): halt instruction still pushed this cycle (old halt)
+	if (g_cyc >= 676 && g_cyc <= 712 && p >= 4088u && p <= 4124u) {
+		fprintf(stderr, "F cyc=%llu pc=%u full=%d halt=%d\n", g_cyc, p,
+				static_cast<int>(to_unsigned(inq_full)),
+				static_cast<int>(to_unsigned(halt_fetched)));
+	}
 	if (halt_fetched == 0 && inq_full == 0) {
 		push_valid <= 1;
 		push_raw <= raw;
@@ -141,6 +153,9 @@ int32_t DMEM::load_n_bytes(uint32_t addr, int n, bool isSigned) const {
 }
 
 void DMEM::store_n_bytes(uint32_t addr, int value, int n) {
+	if (addr <= 0x139Cu && addr + n > 0x139Cu) {
+		fprintf(stderr, "S cyc=%llu jr@%u val=%d n=%d\n", g_cyc, addr, value, n);
+	}
 	for (int i = 0; i < n; i++) {
 		if (addr + i >= MEM_SIZE) {
 			break; // out-of-bounds access (reference throws; never legitimately reached)
@@ -162,6 +177,7 @@ bool DMEM::isReady() const {
 }
 
 void DMEM::work() {
+	++g_cyc;
 	// 1. reply self-clear (MemPull semantics, Memory.cpp:36): keep 1 cycle for LSQ
 	if (reply_valid) {
 		reply_valid <= 0;

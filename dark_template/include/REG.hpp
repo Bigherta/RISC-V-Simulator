@@ -12,6 +12,7 @@ struct REG_Input { // ROB head state (wire-bound to ROB getters)
 	Wire<5> head_dest;
 	Wire<32> head_value;
 	Wire<3> head_type; // ROBType
+	Wire<31> head_tag; // ROB head tag (probe)
 };
 
 struct REG_Output {

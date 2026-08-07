@@ -1,4 +1,7 @@
+#include <cstdio>
 #include "../include/Decoder.hpp"
+
+static unsigned long long g_cyc = 0;
 
 namespace dark {
 
@@ -187,10 +190,21 @@ void DEC::clear() {
 }
 
 void DEC::work() {
+	++g_cyc;
 	if (squash_valid) {
 		clear();
 		pop_request <= 0;
 		return;
+	}
+	{
+		if (g_cyc >= 680 && g_cyc <= 760 && !isEmpty()) {
+			fprintf(stderr, "D cyc=%llu head=%llu tail=%llu :", g_cyc,
+					to_unsigned(head), to_unsigned(tail));
+			for (int k = 0; k < DECODER_CAP; ++k) {
+				fprintf(stderr, " %llu", to_unsigned(slot_pc[k]));
+			}
+			fprintf(stderr, "\n");
+		}
 	}
 	// pop: decoded head consumed by issue (RS-driven, aligns CPU.cpp:467-468)
 	if (pop_dec_valid && !isEmpty()) {

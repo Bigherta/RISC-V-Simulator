@@ -1,3 +1,4 @@
+#include <cstdio>
 #include "../include/INT_RS.hpp"
 
 namespace dark {
@@ -135,6 +136,14 @@ void INT_RS::work() {
 	if (push.valid && squash.valid == 0) {
 		for (int i = 0; i < INTEGERRS_CAP; ++i) {
 			if (slot_busy[i] == 0) {
+				{
+					static unsigned long long g_cyc2 = 0;
+					fprintf(stderr, "T cyc=%llu pc=%llu vj=%llu qj=%llu vk=%llu qk=%llu tag=%llu\n",
+							g_cyc2, to_unsigned(push.pc), to_unsigned(push.vj),
+							to_unsigned(push.qj), to_unsigned(push.vk),
+							to_unsigned(push.qk), to_unsigned(push.rob_tag));
+					++g_cyc2;
+				}
 				slot_busy[i] <= 1;
 				slot_op[i] <= to_unsigned(push.op);
 				slot_vj[i] <= to_unsigned(push.vj);

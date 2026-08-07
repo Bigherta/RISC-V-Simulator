@@ -73,7 +73,89 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ---
 
-## 5. 评分标准
+## 5. 验证脚本
+
+仓库提供两个辅助脚本，分别验证**乱序执行的一致性**（CR 会随机打乱模块调用顺序，要求结果与周期数不变）与**代码行为**（返回值正确性、分支预测正确率、时钟周期数）。
+
+### 5.1 乱序执行一致性测试 — `test/test_reorder.sh`
+
+`test/reorder_test` 以**任意顺序**调用 7 个流水级（fetch / decode / issue / exec / writeBack / commit / flush），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
+
+构建（独立于根目录，不影响 OJ 提交）：
+
+```bash
+cd test
+cmake -S . -B build && cmake --build build     # 生成 test/reorder_test
+```
+
+运行（`reorder_test` 不存在时脚本会自动构建）：
+
+```bash
+cd test
+./test_reorder.sh                 # 全部测试
+./test_reorder.sh 'gcd'           # 只跑 gcd
+./test_reorder.sh 'q*'            # 通配符过滤（如 qsort、queens）
+./test_reorder.sh --count N       # 强制所有测试用 N 组随机乱序（调试用）
+```
+
+按每个测试点**单次运行耗时**（内置 `TIMING_MS` 表，来自评测数据）自动分档：
+
+| 单次耗时 | 乱序组数 |
+|---|---|
+| < 100ms | 全量 **5040** 组 |
+| 100 ~ 10000ms | 随机 **100** 组 |
+| > 10000ms | 仅参考序 **1** 组（`ref` 模式，如 pi） |
+
+输出列：`Program`、`Count`（档位）、`Perms`（实际排列数）、`Value`（`x10&0xFF`）、`Clock`、`Golden(x10/clk)`、`Result`、`Time`。
+
+判定规则：
+
+- **OK** — `value` 与 `clock` 均与 golden 一致；
+- **CLK** — `value` 一致但 `clock` 与 golden 不同（周期仅要求尽力对齐，不硬性要求）；
+- **FAIL** — 功能值不一致，或不同乱序排列之间结果不一致。
+
+`reorder_test` 也可直接使用：`./reorder_test all`（5040 组）、`./reorder_test <N>`（N 组随机）、`./reorder_test ref`（仅参考序 1 组），从 stdin 读入 `<test>.data`。
+
+### 5.2 代码行为测试 — `test.sh`
+
+以官方 `data/testcases/*.data` 作为输入运行根目录 `code`，同时验证**行为正确性**（返回值 `x10 & 0xFF` 与 `data/golden` 比对、崩溃检测）、**分支预测正确率**与**时钟周期数**。
+
+先编译根目录 `code`：
+
+```bash
+cmake -S . -B build && cmake --build build     # 生成 ./code
+```
+
+运行：
+
+```bash
+./test.sh                  # 全部测试
+./test.sh 'q*'             # 通配符过滤（如 qsort、queens）
+BP_BIN=./code ./test.sh    # 指定可执行文件（默认 ./code）
+```
+
+输出列：`Program`、`Exit`（退出码，非 0 表示崩溃）、`Correct/Total`（分支预测正确数/总数）、`Accuracy`、`Clock`（总时钟周期数）、`Time`（单测试点墙钟耗时）、`x10`（返回值）、`Golden`（OK / FAIL / CRASH），末尾汇总 `TOTAL` 整体正确率与总时钟数。任一测试点 FAIL 或 CRASH 时脚本以非 0 退出（可用于 CI）。
+
+#### 单独统计时钟数与分支预测正确率
+
+不比对 golden，直接运行模拟器并输出统计（`branch:` 行与 `clock:` 行走 **stderr**）：
+
+```bash
+# 单个测试点
+VERBOSE=branch,clock ./code < data/testcases/gcd.data
+
+# 全部测试点
+for f in data/testcases/*.data; do
+  echo "== $(basename "$f" .data) =="
+  VERBOSE=branch,clock ./code < "$f"
+done
+```
+
+`VERBOSE` 支持逗号分隔的主题：`branch`、`clock`、`issue`、`exec`、`wb`、`commit`、`lsq`、`mem`，或 `all`。其中 `branch` 输出 `branch: <正确>/<总数> correct (<正确率>%)`，`clock` 输出 `clock: <时钟数>`。
+
+---
+
+## 6. 评分标准
 
 | 项目 | 占比 |
 |------|------|
@@ -89,7 +171,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ---
 
-## 6. 实现建议与注意事项
+## 7. 实现建议与注意事项
 
 来自 [`issue.pdf`](./issue.pdf)，并补充讲义要点：
 
@@ -114,7 +196,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ---
 
-## 7. 参考资料
+## 8. 参考资料
 
 - `reference/reference-card.pdf` —— 指令速查卡
 - `reference/riscv-spec-20191213.pdf` —— RISC-V 官方规范（RV32I 精确定义）

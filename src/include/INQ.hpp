@@ -10,7 +10,7 @@ struct INQEntry {
   int32_t predictedPC;
   Instruct ninst;
   bool decoded;
-  BranchPredictorCkpt ras_ckpt;
+  BranchPredictorSnapshot ras_ckpt;
 };
 
 class INQ {
@@ -25,9 +25,9 @@ public:
   bool isEmpty() const;
   
   void push(uint32_t raw, int pc, int32_t predictedPC,
-            const BranchPredictorCkpt &ckpt);
+            const BranchPredictorSnapshot &ckpt);
   int32_t peekPredictedPC() const;
-  BranchPredictorCkpt peekRASCkpt() const;
+  BranchPredictorSnapshot peekRASCkpt() const;
   Instruct peek() const;
   Instruct pop();
   uint8_t getHead() const;

@@ -3,14 +3,15 @@
 #include <cstring>
 #include <stdexcept>
 PredictInfo BranchPredictor::predict(int32_t pc) {
-  auto local_index = (pc >> 2) & (BHT_CAP - 1);
-  auto global_index = ((pc >> 2) ^ GHR) & (BHT_CAP - 1);
+  auto local_index = (pc >> 2) & (LHT_CAP - 1);
+  auto global_index = ((pc >> 2) ^ GHR) & (PC_Direct_CAP - 1);
+  auto BTB_index = (pc >> 2) & (PC_Direct_CAP - 1);
   auto selector_index = ((pc >> 2) ^ GHR) & (SELECTOR_CAP - 1);
-  auto BTB_index = (pc >> 2) & (BTB_CAP - 1);
+  auto history = LHT[local_index];
   bool hit = BTB[BTB_index].valid && BTB[BTB_index].actualPC == pc;
   bool use_global = selector[selector_index] >= 2;
   bool taken = hit && (use_global ? globalPHT[global_index] >= 2
-                                  : localPHT[local_index] >= 2);
+                                  : localPHT[history] >= 2);
   int32_t predictPC = pc + 4;
   if (taken && hit) {
     predictPC = BTB[BTB_index].target;
@@ -19,19 +20,20 @@ PredictInfo BranchPredictor::predict(int32_t pc) {
 }
 void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
                              uint16_t ghr) {
-  auto local_index = (pc >> 2) & (BHT_CAP - 1);
-  auto global_index = ((pc >> 2) ^ ghr) & (BHT_CAP - 1);
+  auto local_index = (pc >> 2) & (LHT_CAP - 1);
+  auto global_index = ((pc >> 2) ^ ghr) & (PC_Direct_CAP - 1);
   auto selector_index = ((pc >> 2) ^ ghr) & (SELECTOR_CAP - 1);
+  auto history = LHT[local_index];
 
-  bool pred_local = localPHT[local_index] >= 2;
+  bool pred_local = localPHT[history] >= 2;
   bool pred_global = globalPHT[global_index] >= 2;
 
-  localPHT[local_index] =
+  localPHT[history] =
       taken
-          ? (localPHT[local_index] < 3 ? localPHT[local_index] + 1
-                                       : localPHT[local_index])
-          : (localPHT[local_index] > 0 ? localPHT[local_index] - 1
-                                       : localPHT[local_index]);
+          ? (localPHT[history] < 3 ? localPHT[history] + 1 : localPHT[history])
+          : (localPHT[history] > 0 ? localPHT[history] - 1 : localPHT[history]);
+  LHT[local_index] =
+      ((LHT[local_index] << 1) | (taken ? 1 : 0)) & (LOCAL_PHT_CAP - 1);
   globalPHT[global_index] =
       taken ? (globalPHT[global_index] < 3 ? globalPHT[global_index] + 1
                                            : globalPHT[global_index])
@@ -41,15 +43,15 @@ void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
   bool local_correct = pred_local == taken;
   bool global_correct = pred_global == taken;
   if (global_correct && !local_correct)
-    selector[selector_index] =
-        selector[selector_index] < 3 ? selector[selector_index] + 1
-                                     : selector[selector_index];
+    selector[selector_index] = selector[selector_index] < 3
+                                   ? selector[selector_index] + 1
+                                   : selector[selector_index];
   else if (local_correct && !global_correct)
-    selector[selector_index] =
-        selector[selector_index] > 0 ? selector[selector_index] - 1
-                                     : selector[selector_index];
+    selector[selector_index] = selector[selector_index] > 0
+                                   ? selector[selector_index] - 1
+                                   : selector[selector_index];
 
-  auto BTB_index = (pc >> 2) & (BTB_CAP - 1);
+  auto BTB_index = (pc >> 2) & (PC_Direct_CAP - 1);
   if (taken) {
     BTB[BTB_index].actualPC = pc;
     BTB[BTB_index].target = target;
@@ -75,11 +77,16 @@ uint32_t BranchPredictor::RAS_pop() {
 bool BranchPredictor::RAS_empty() const { return RAS_top == 0; }
 bool BranchPredictor::RAS_full() const { return RAS_top == RAS_CAP; }
 
-BranchPredictorCkpt BranchPredictor::snapshotCheckPoint() const {
-  return {RAS_top, GHR};
+BranchPredictorSnapshot BranchPredictor::snapshotCheckPoint() const {
+  BranchPredictorSnapshot s;
+  s.top_snapshot = RAS_top;
+  s.GHR_snapshot = GHR;
+  memcpy(s.RAS_snapshot, RAS, sizeof(RAS));
+  return s;
 }
 
-void BranchPredictor::recoverCheckPoint(BranchPredictorCkpt ckpt) {
-  RAS_top = ckpt.top;
-  GHR = ckpt.GHR;
+void BranchPredictor::recoverCheckPoint(const BranchPredictorSnapshot &ckpt) {
+  RAS_top = ckpt.top_snapshot;
+  GHR = ckpt.GHR_snapshot;
+  memcpy(RAS, ckpt.RAS_snapshot, sizeof(RAS));
 }

@@ -6,10 +6,11 @@
 #include <cstdint>
 class BranchPredictor {
 private:
-  uint8_t globalPHT[BHT_CAP] = {};
-  uint8_t localPHT[BHT_CAP] = {};
+  uint8_t globalPHT[PC_Direct_CAP] = {};
+  uint8_t LHT[LHT_CAP] = {};
+  uint8_t localPHT[LOCAL_PHT_CAP] = {};
   uint8_t selector[SELECTOR_CAP] = {};
-  BTBEntry BTB[BTB_CAP] = {};
+  BTBEntry BTB[PC_Direct_CAP] = {};
   uint32_t RAS[RAS_CAP] = {};
   int RAS_top = 0;
   uint16_t GHR = 0;
@@ -26,7 +27,7 @@ public:
   auto RAS_pop() -> uint32_t;
   auto RAS_empty() const -> bool;
   auto RAS_full() const -> bool;
-  BranchPredictorCkpt snapshotCheckPoint() const;
-  void recoverCheckPoint(BranchPredictorCkpt);
+  BranchPredictorSnapshot snapshotCheckPoint() const;
+  void recoverCheckPoint(const BranchPredictorSnapshot&);
 };
 #endif // BRANCHPREDICTOR_HPP

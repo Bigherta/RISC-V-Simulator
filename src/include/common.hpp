@@ -13,11 +13,13 @@ constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
 constexpr int BRU_CAP = 4;
-constexpr int BHT_CAP = 1 << 12;
+constexpr int PC_Direct_CAP = 1 << 12;
 constexpr int SELECTOR_CAP = 1 << 12;
 constexpr int HISTORY_BIT = 12;
 constexpr int HISTORY_MASK = (1 << HISTORY_BIT) - 1;
-constexpr int BTB_CAP = 4096;
+constexpr int LHT_CAP = 1 << 12;
+constexpr int LOCAL_HISTORY_BIT = 8;
+constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 128;
 enum class Operation {
   ADD,
@@ -141,8 +143,9 @@ struct BTBEntry {
   bool valid;
 };
 
-struct BranchPredictorCkpt {
-  int top;
-  uint16_t GHR;
+struct BranchPredictorSnapshot {
+  int top_snapshot;
+  uint32_t RAS_snapshot[RAS_CAP];
+  uint16_t GHR_snapshot;
 };
 #endif // COMMON_HPP

@@ -259,14 +259,7 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   newROB.dest = destination;
   newROB.tag = CPUstate.ROBModule.push(newROB);
   LoadRS.ROB_dest = newROB.tag;
-  LSQEntry newLSQ{};
-  newLSQ.isAddressReady = false;
-  newLSQ.valueState = ValueState::NOTREADY;
-  newLSQ.ROBTag = newROB.tag;
-  newLSQ.type = Operation::Load;
-  newLSQ.n_bytes = n_bytes;
-  newLSQ.isUnsigned = isUnsigned;
-  CPUstate.LSQModule.push(newLSQ);
+  CPUstate.LSQModule.pushLoad(newROB.tag, n_bytes, isUnsigned);
   for (int i = 0; i < LOADRS_CAP; i++) {
     if (RSModule.LoadRS[i].free) {
       CPUstate.RSModule.LoadRS[i] = LoadRS;
@@ -331,13 +324,7 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   newROB.tag = CPUstate.ROBModule.push(newROB);
   StoreRS.ROB_dest = newROB.tag;
   MicroRS.ROB_dest = newROB.tag;
-  LSQEntry newLSQ{};
-  newLSQ.type = Operation::Store;
-  newLSQ.ROBTag = newROB.tag;
-  newLSQ.n_bytes = n_bytes;
-  newLSQ.isAddressReady = false;
-  newLSQ.valueState = ValueState::NOTREADY;
-  CPUstate.LSQModule.push(newLSQ);
+  CPUstate.LSQModule.pushStore(newROB.tag, n_bytes);
   for (int i = 0; i < STORERS_CAP; i++) {
     if (RSModule.StoreRS[i].free) {
       CPUstate.RSModule.StoreRS[i] = StoreRS;
@@ -682,19 +669,18 @@ void CPU::execute() {
   // LSQ execute
   bool memBusy = DataMem.isBusy();
   if (!memBusy && !LSQModule.isEmpty() &&
-      LSQModule.peek().type == Operation::Store) {
-    auto storeEntry = LSQModule.peek();
-    int storeIndex = ROBModule.getIndex(storeEntry.ROBTag);
+      !LSQModule.isHeadLoad()) {
+    int storeIndex = ROBModule.getIndex(LSQModule.getROBTag(LSQModule.getHead()));
     if (storeIndex == -1 ||
         (storeIndex == ROBModule.getHead() &&
          ROBModule.getEntry(storeIndex).isCommitReady)) {
       MemRequest newRequest{};
-      newRequest.address = storeEntry.address;
-      newRequest.value = storeEntry.value;
-      newRequest.isSigned = !storeEntry.isUnsigned;
-      newRequest.n_bytes = storeEntry.n_bytes;
+      newRequest.address = LSQModule.getAddress(LSQModule.getHead());
+      newRequest.value = LSQModule.getValue(LSQModule.getHead());
+      newRequest.isSigned = !LSQModule.getIsUnsigned(LSQModule.getHead());
+      newRequest.n_bytes = LSQModule.getNBytes(LSQModule.getHead());
       newRequest.op = Operation::Store;
-      newRequest.ROBTag = storeEntry.ROBTag;
+      newRequest.ROBTag = LSQModule.getROBTag(LSQModule.getHead());
       if (CPUstate.DataMem.MemPush(newRequest)) {
         if (debug::enabled(debug::TOPIC_MEM))
           debug::print("MEM store @%u <- %d\n", newRequest.address,
@@ -707,12 +693,11 @@ void CPU::execute() {
   auto loadIndex = LSQModule.LoadDetect();
   if (loadIndex != 0xFFFFFFFF && !memBusy) {
     MemRequest newRequest{};
-    auto entry = LSQModule.getEntry(loadIndex);
-    newRequest.address = entry.address;
-    newRequest.isSigned = !entry.isUnsigned;
-    newRequest.n_bytes = entry.n_bytes;
+    newRequest.address = LSQModule.getAddress(loadIndex);
+    newRequest.isSigned = !LSQModule.getIsUnsigned(loadIndex);
+    newRequest.n_bytes = LSQModule.getNBytes(loadIndex);
     newRequest.op = Operation::Load;
-    newRequest.ROBTag = entry.ROBTag;
+    newRequest.ROBTag = LSQModule.getROBTag(loadIndex);
     if (!squashDetect.needSquash ||
         (squashDetect.needSquash &&
          newRequest.ROBTag < squashDetect.SquashTag)) {
@@ -722,15 +707,13 @@ void CPU::execute() {
   }
   for (int i = LSQModule.getHead(); i != LSQModule.getTail();
        i = (i + 1) & 0x3F) {
-    auto e = LSQModule.getEntry(i);
     if (LSQModule.isReadyToCommit(i)) {
-      auto lsqEntry = LSQModule.getEntry(i);
+      auto lsqTag = LSQModule.getROBTag(i);
       if (!squashDetect.needSquash ||
-          (squashDetect.needSquash &&
-           lsqEntry.ROBTag < squashDetect.SquashTag)) {
-        auto index = ROBModule.getIndex(lsqEntry.ROBTag);
+          (squashDetect.needSquash && lsqTag < squashDetect.SquashTag)) {
+        auto index = ROBModule.getIndex(lsqTag);
         if (index != -1) {
-          CPUstate.ROBModule.writeROBValue(lsqEntry.value, index);
+          CPUstate.ROBModule.writeROBValue(LSQModule.getValue(i), index);
           CPUstate.ROBModule.setROBCommitReady(index);
         }
       }
@@ -831,7 +814,7 @@ void CPU::writeBack() {
       }
       auto entry = ROBModule.getEntry(index);
       CPUstate.BPModule.update(BranchResult.pcFrom, taken,
-                               BranchResult.pcResult, entry.ras_ckpt.GHR);
+                               BranchResult.pcResult, entry.ras_ckpt.GHR_snapshot);
       CPUstate.ROBModule.setROBCommitReady(index);
     }
     CPUstate.BRUModule.remove(BranchResult.robTag);
@@ -894,7 +877,7 @@ void CPU::writeBack() {
         ++branchCorrect;
       }
       CPUstate.BPModule.update(robEntry.pc, true, static_cast<int32_t>(pc),
-                               robEntry.ras_ckpt.GHR);
+                               robEntry.ras_ckpt.GHR_snapshot);
       if (pc != ROBModule.getPredictedPC(robIndex)) {
         JumpSquash.needSquash = true;
         JumpSquash.SquashPC = pc;
@@ -923,15 +906,9 @@ void CPU::commit() {
     return;
   }
   uint8_t cur = LSQModule.getHead();
-  while (cur != LSQModule.getTail()) {
-    LSQEntry e = LSQModule.getEntry(cur);
-    if (e.type == Operation::Load && ROBModule.getIndex(e.ROBTag) == -1 &&
-        e.isCDBBroadcast) {
-      CPUstate.LSQModule.pop();
-      cur = (cur + 1) & 0x3F;
-    } else {
-      break;
-    }
+  if (cur != LSQModule.getTail() && LSQModule.isHeadLoad() &&
+      ROBModule.getIndex(LSQModule.headROBTag()) == -1) {
+    CPUstate.LSQModule.pop();
   }
   if (ROBModule.isEmpty() || !ROBModule.isHeadCommitReady())
     return;
@@ -944,24 +921,6 @@ void CPU::commit() {
              rob_entry.type == ROBType::LINK) {
     CPUstate.REGModule.writeReg(rob_entry.dest, rob_entry.value);
   }
-}
-void CPU::read() {
-  memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
-  memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
-  memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
-  memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
-  memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
-  memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
-  memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));
-  memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
-  DataMem.snapshotFrom(CPUstate.DataMem);
-  programCounter = CPUstate.programCounter;
-  haltFetched = CPUstate.haltFetched;
-  haltCommitted = CPUstate.haltCommitted;
-  haltRd = CPUstate.haltRd;
-  memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
-  squashDetect = CPUstate.flushArbiter.arbitResult();
-  cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
 }
 void CPU::flush() {
   if (squashDetect.needSquash) {
@@ -1040,6 +999,24 @@ void CPU::flush() {
       CPUstate.BPModule.recoverCheckPoint(entry.ras_ckpt);
     }
   }
+}
+void CPU::read() {
+  memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
+  memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
+  memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
+  memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
+  memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
+  memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
+  memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));
+  memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
+  DataMem.snapshotFrom(CPUstate.DataMem);
+  programCounter = CPUstate.programCounter;
+  haltFetched = CPUstate.haltFetched;
+  haltCommitted = CPUstate.haltCommitted;
+  haltRd = CPUstate.haltRd;
+  memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
+  squashDetect = CPUstate.flushArbiter.arbitResult();
+  cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
 }
 void CPU::run() {
   bool finish = false;

@@ -95,11 +95,10 @@ public:
     bool lsqValid = lsqCDBDetect != -1;
     ExecuteResult lsqResult{};
     if (lsqValid) {
-      auto lsqEntry = LSQModule.getEntry(lsqCDBDetect);
       lsqResult.isAddress = false;
-      lsqResult.robTag = lsqEntry.ROBTag;
-      lsqResult.value = lsqEntry.value;
-      if (needSquash && lsqEntry.ROBTag > squashTag)
+      lsqResult.robTag = LSQModule.getROBTag(lsqCDBDetect);
+      lsqResult.value = LSQModule.getValue(lsqCDBDetect);
+      if (needSquash && lsqResult.robTag > squashTag)
         lsqValid = false;
     }
     CDBOutput out = {{0, 0, false}, false, false, false};

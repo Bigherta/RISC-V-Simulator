@@ -10,7 +10,7 @@ enum class ValueState {
   READY,
 };
 struct LSQEntry {
-  Operation type;
+  bool isLoad;
   int ROBTag;
   uint32_t address;
   int32_t value;
@@ -42,9 +42,9 @@ public:
   LSQ() { std::memset(this, 0, sizeof(*this)); }
   bool isEmpty() const;
   bool isFull() const;
-  void push(LSQEntry entry);
-  LSQEntry peek() const;
-  LSQEntry pop();
+  void pushLoad(int ROBTag, int n_bytes, bool isUnsigned);
+  void pushStore(int ROBTag, int n_bytes);
+  void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
   bool isReadyToCommit(int index) const;
@@ -53,9 +53,19 @@ public:
   void writeValue(int32_t value, int index);
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;
-  auto getEntry(int index) const -> LSQEntry;
+  auto isHeadLoad() const -> bool;
+  auto headROBTag() const -> int;
+  auto headAddress() const -> uint32_t;
+  auto headValue() const -> int32_t;
+  auto headIsUnsigned() const -> bool;
+  auto headNBytes() const -> int;
+  auto getROBTag(int index) const -> int;
+  auto getIsLoad(int index) const -> bool;
+  auto getIsUnsigned(int index) const -> bool;
+  auto getNBytes(int index) const -> int;
   void setValueState(int index, ValueState state);
   void setCDBBroadcast(int index);
+  auto getIsCDBBroadcast(int index) const -> bool;
   auto planDataForward(int index, int32_t value) const
       -> LSQStoreToLoadForwardPlan;
   auto planAddressForward(int index, uint32_t address) const

@@ -19,7 +19,7 @@ struct ROBEntry {
   uint32_t predictedPC = 0;
   int32_t pc = 0;
   bool halt = false;
-  BranchPredictorCkpt ras_ckpt;
+  BranchPredictorSnapshot ras_ckpt;
   ROBEntry() = default;
   ROBEntry(ROBType type_) : type(type_) {}
 };

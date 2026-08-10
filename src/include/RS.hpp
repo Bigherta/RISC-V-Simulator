@@ -15,12 +15,12 @@ struct ReservationStation {
   ReservationStation(Operation type) : op(type), free(true) {}
 };
 
-struct StoreMicroReservationStation {
+struct StoreValueReservationStation {
   bool free;
   int32_t vrs2 = 0;
   int qrs2 = -1;
   int robIndex = ~0u >> 1;
-  StoreMicroReservationStation() : free(true) {}
+  StoreValueReservationStation() : free(true) {}
 };
 
 struct BranchReservationStation : public ReservationStation {
@@ -30,13 +30,9 @@ struct BranchReservationStation : public ReservationStation {
   BranchReservationStation(Operation type) : ReservationStation(type) {}
 };
 
-struct RSCluster {
+struct IntegerRS {
   ReservationStation IntegerRS[INTEGERRS_CAP];
-  ReservationStation StoreRS[STORERS_CAP];
-  StoreMicroReservationStation MicroStoreRS[STORERS_CAP];
-  ReservationStation LoadRS[LOADRS_CAP];
-  BranchReservationStation BranchRS[BRANCHRS_CAP];
-  bool isIntergerRSFull() const {
+  bool isIntegerRSFull() const {
     for (auto IntegerRS : IntegerRS) {
       if (IntegerRS.free) {
         return false;
@@ -44,22 +40,34 @@ struct RSCluster {
     }
     return true;
   }
-  bool isStoreRSFull() const {
-    for (auto StoreRS : StoreRS) {
-      if (StoreRS.free) {
+};
+
+struct StoreAddressRS {
+  ReservationStation StoreAddressRS[STORERS_CAP];
+  bool isStoreAddressRSFull() const {
+    for (auto StoreAddressRS : StoreAddressRS) {
+      if (StoreAddressRS.free) {
         return false;
       }
     }
     return true;
   }
-  bool isMicroStoreRSFull() const {
-    for (auto MicroRS : MicroStoreRS) {
-      if (MicroRS.free) {
+};
+
+struct StoreValueRS {
+  StoreValueReservationStation StoreValueRS[STORERS_CAP];
+  bool isStoreValueRSFull() const {
+    for (auto StoreValueRS : StoreValueRS) {
+      if (StoreValueRS.free) {
         return false;
       }
     }
     return true;
   }
+};
+
+struct LoadRS {
+  ReservationStation LoadRS[LOADRS_CAP];
   bool isLoadRSFull() const {
     for (auto LoadRS : LoadRS) {
       if (LoadRS.free) {
@@ -68,6 +76,10 @@ struct RSCluster {
     }
     return true;
   }
+};
+
+struct BranchRS {
+  BranchReservationStation BranchRS[BRANCHRS_CAP];
   bool isBranchRSFull() const {
     for (auto BranchRS : BranchRS) {
       if (BranchRS.free) {

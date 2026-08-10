@@ -16,7 +16,11 @@
 #include <cstring>
 
 struct systemState {
-  RSCluster RSModule;
+  IntegerRS IntegerRSModule;
+  StoreAddressRS StoreAddressRSModule;
+  StoreValueRS StoreValueRSModule;
+  LoadRS LoadRSModule;
+  BranchRS BranchRSModule;
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
@@ -46,7 +50,11 @@ private:
   friend int debug_trace_main();
   friend void issue_from_inq(CPU &cpu, uint32_t raw, int pc);
   friend int debug_trace_main();
-  RSCluster RSModule;
+  IntegerRS IntegerRSModule;
+  StoreAddressRS StoreAddressRSModule;
+  StoreValueRS StoreValueRSModule;
+  LoadRS LoadRSModule;
+  BranchRS BranchRSModule;
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;

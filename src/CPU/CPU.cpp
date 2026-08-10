@@ -65,7 +65,7 @@ void CPU::decode() {
 
 IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
                                  bool isControl) {
-  if (RSModule.isIntergerRSFull() || ROBModule.isFull()) {
+  if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
     return {false, inst.rd, -1};
   }
   ReservationStation IntegerRS{};
@@ -123,8 +123,8 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
   for (int i = 0; i < INTEGERRS_CAP; i++) {
-    if (RSModule.IntegerRS[i].free) {
-      CPUstate.RSModule.IntegerRS[i] = IntegerRS;
+    if (IntegerRSModule.IntegerRS[i].free) {
+      CPUstate.IntegerRSModule.IntegerRS[i] = IntegerRS;
       break;
     }
   }
@@ -132,7 +132,7 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
 }
 
 IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
-  if (RSModule.isIntergerRSFull() || ROBModule.isFull()) {
+  if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
     return {false, inst.rd, -1};
   }
   ReservationStation IntegerRS{};
@@ -157,8 +157,8 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
   for (int i = 0; i < INTEGERRS_CAP; i++) {
-    if (RSModule.IntegerRS[i].free) {
-      CPUstate.RSModule.IntegerRS[i] = IntegerRS;
+    if (IntegerRSModule.IntegerRS[i].free) {
+      CPUstate.IntegerRSModule.IntegerRS[i] = IntegerRS;
       break;
     }
   }
@@ -166,7 +166,7 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
 }
 
 IssueResult CPU::issue_B(Instruct inst) {
-  if (RSModule.isBranchRSFull() || ROBModule.isFull()) {
+  if (BranchRSModule.isBranchRSFull() || ROBModule.isFull()) {
     return {false, inst.rd, -1};
   }
   BranchReservationStation BranchRS{};
@@ -214,8 +214,8 @@ IssueResult CPU::issue_B(Instruct inst) {
   int robIndex = CPUstate.ROBModule.push(newROB);
   BranchRS.robIndex = robIndex;
   for (int i = 0; i < BRANCHRS_CAP; i++) {
-    if (RSModule.BranchRS[i].free) {
-      CPUstate.RSModule.BranchRS[i] = BranchRS;
+    if (BranchRSModule.BranchRS[i].free) {
+      CPUstate.BranchRSModule.BranchRS[i] = BranchRS;
       break;
     }
   }
@@ -223,7 +223,7 @@ IssueResult CPU::issue_B(Instruct inst) {
 }
 
 IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
-  if (RSModule.isLoadRSFull() || ROBModule.isFull() || LSQModule.isFull()) {
+  if (LoadRSModule.isLoadRSFull() || ROBModule.isFull() || LSQModule.isFull()) {
     return {false, inst.rd, -1};
   }
   ReservationStation LoadRS{};
@@ -256,8 +256,8 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   CPUstate.LSQModule.pushLoad(robIndex, CPUstate.ROBModule.getSeq(robIndex),
                               n_bytes, isUnsigned);
   for (int i = 0; i < LOADRS_CAP; i++) {
-    if (RSModule.LoadRS[i].free) {
-      CPUstate.RSModule.LoadRS[i] = LoadRS;
+    if (LoadRSModule.LoadRS[i].free) {
+      CPUstate.LoadRSModule.LoadRS[i] = LoadRS;
       break;
     }
   }
@@ -266,7 +266,8 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
 
 IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
 
-  if (RSModule.isStoreRSFull() || RSModule.isMicroStoreRSFull() ||
+  if (StoreAddressRSModule.isStoreAddressRSFull() ||
+      StoreValueRSModule.isStoreValueRSFull() ||
       ROBModule.isFull() || LSQModule.isFull()) {
     return {false, 0, -1};
   }
@@ -293,7 +294,7 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   }
   StoreRS.vk = inst.imm;
 
-  StoreMicroReservationStation MicroRS{};
+  StoreValueReservationStation MicroRS{};
   MicroRS.free = false;
   auto op2 = REGModule.readOperand(regNum2);
   if (op2.ready) {
@@ -318,14 +319,14 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   CPUstate.LSQModule.pushStore(robIndex, CPUstate.ROBModule.getSeq(robIndex),
                                n_bytes);
   for (int i = 0; i < STORERS_CAP; i++) {
-    if (RSModule.StoreRS[i].free) {
-      CPUstate.RSModule.StoreRS[i] = StoreRS;
+    if (StoreAddressRSModule.StoreAddressRS[i].free) {
+      CPUstate.StoreAddressRSModule.StoreAddressRS[i] = StoreRS;
       break;
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
-    if (RSModule.MicroStoreRS[i].free) {
-      CPUstate.RSModule.MicroStoreRS[i] = MicroRS;
+    if (StoreValueRSModule.StoreValueRS[i].free) {
+      CPUstate.StoreValueRSModule.StoreValueRS[i] = MicroRS;
       break;
     }
   }
@@ -554,7 +555,7 @@ void CPU::execute() {
     ReservationStation Execute_RS{};
     bool foundAny = false;
     for (int i = 0; i < INTEGERRS_CAP; ++i) {
-      auto rs = RSModule.IntegerRS[i];
+      auto rs = IntegerRSModule.IntegerRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
         if (!foundAny) {
           Execute_RS = rs;
@@ -570,7 +571,7 @@ void CPU::execute() {
       }
     }
     for (int i = 0; i < LOADRS_CAP; ++i) {
-      auto rs = RSModule.LoadRS[i];
+      auto rs = LoadRSModule.LoadRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
         if (!foundAny) {
           Execute_RS = rs;
@@ -586,7 +587,7 @@ void CPU::execute() {
       }
     }
     for (int i = 0; i < STORERS_CAP; ++i) {
-      auto rs = RSModule.StoreRS[i];
+      auto rs = StoreAddressRSModule.StoreAddressRS[i];
       if (!rs.free && rs.qj == -1) {
         if (!foundAny) {
           Execute_RS = rs;
@@ -610,41 +611,41 @@ void CPU::execute() {
             execSeq, isMemoryOp(Execute_RS.op), isControlOp(Execute_RS.op));
         switch (Execute_RS_type) {
         case 0:
-          CPUstate.RSModule.IntegerRS[Execute_RS_index].free = true;
-          CPUstate.RSModule.IntegerRS[Execute_RS_index].qj = -1;
-          CPUstate.RSModule.IntegerRS[Execute_RS_index].qk = -1;
+          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].free = true;
+          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qj = -1;
+          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qk = -1;
           break;
         case 1:
-          CPUstate.RSModule.LoadRS[Execute_RS_index].free = true;
-          CPUstate.RSModule.LoadRS[Execute_RS_index].qj = -1;
-          CPUstate.RSModule.LoadRS[Execute_RS_index].qk = -1;
+          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].free = true;
+          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qj = -1;
+          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qk = -1;
           break;
         case 2:
-          CPUstate.RSModule.StoreRS[Execute_RS_index].free = true;
-          CPUstate.RSModule.StoreRS[Execute_RS_index].qj = -1;
+          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].free = true;
+          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].qj = -1;
           break;
         }
       }
     }
   }
   for (int i = 0; i < STORERS_CAP; ++i) {
-    if (!RSModule.MicroStoreRS[i].free && RSModule.MicroStoreRS[i].qrs2 == -1) {
-      uint64_t microSeq = ROBModule.getSeq(RSModule.MicroStoreRS[i].robIndex);
+    if (!StoreValueRSModule.StoreValueRS[i].free && StoreValueRSModule.StoreValueRS[i].qrs2 == -1) {
+      uint64_t microSeq = ROBModule.getSeq(StoreValueRSModule.StoreValueRS[i].robIndex);
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash && microSeq < squashDetect.SquashSeq)) {
         auto index = LSQModule.getIndexBySeq(microSeq);
         if (index >= 0) {
           auto plan =
-              LSQModule.planDataForward(index, RSModule.MicroStoreRS[i].vrs2);
+              LSQModule.planDataForward(index, StoreValueRSModule.StoreValueRS[i].vrs2);
           if (debug::enabled(debug::TOPIC_LSQ))
             debug::print("LSQ store value seq=%llu -> LSQ[%d] = %d\n",
                          static_cast<unsigned long long>(microSeq), index,
-                         RSModule.MicroStoreRS[i].vrs2);
-          CPUstate.LSQModule.writeValue(RSModule.MicroStoreRS[i].vrs2, index);
+                         StoreValueRSModule.StoreValueRS[i].vrs2);
+          CPUstate.LSQModule.writeValue(StoreValueRSModule.StoreValueRS[i].vrs2, index);
           CPUstate.LSQModule.applyStoreToLoadForward(plan);
         }
-        CPUstate.RSModule.MicroStoreRS[i].free = true;
-        CPUstate.RSModule.MicroStoreRS[i].qrs2 = -1;
+        CPUstate.StoreValueRSModule.StoreValueRS[i].free = true;
+        CPUstate.StoreValueRSModule.StoreValueRS[i].qrs2 = -1;
       }
     }
   }
@@ -655,7 +656,7 @@ void CPU::execute() {
     BranchReservationStation Execute_RS{};
     bool foundAny = false;
     for (int i = 0; i < BRANCHRS_CAP; ++i) {
-      auto rs = RSModule.BranchRS[i];
+      auto rs = BranchRSModule.BranchRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
         if (!foundAny) {
           Execute_RS = rs;
@@ -677,9 +678,9 @@ void CPU::execute() {
         CPUstate.BRUModule.BRUExecute(
             Execute_RS.vj, Execute_RS.vk, Execute_RS.pc, Execute_RS.imm,
             Execute_RS.op, Execute_RS.robIndex, execSeq);
-        CPUstate.RSModule.BranchRS[Execute_RS_index].free = true;
-        CPUstate.RSModule.BranchRS[Execute_RS_index].qj = -1;
-        CPUstate.RSModule.BranchRS[Execute_RS_index].qk = -1;
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].free = true;
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qj = -1;
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qk = -1;
       }
     }
   }
@@ -763,46 +764,46 @@ void CPU::execute() {
 
 void CPU::CDBBroadcast(int robIndex, int value) {
   for (int i = 0; i < INTEGERRS_CAP; i++) {
-    if (!RSModule.IntegerRS[i].free && RSModule.IntegerRS[i].qj == robIndex) {
-      CPUstate.RSModule.IntegerRS[i].vj = value;
-      CPUstate.RSModule.IntegerRS[i].qj = -1;
+    if (!IntegerRSModule.IntegerRS[i].free && IntegerRSModule.IntegerRS[i].qj == robIndex) {
+      CPUstate.IntegerRSModule.IntegerRS[i].vj = value;
+      CPUstate.IntegerRSModule.IntegerRS[i].qj = -1;
     }
-    if (!RSModule.IntegerRS[i].free && RSModule.IntegerRS[i].qk == robIndex) {
-      CPUstate.RSModule.IntegerRS[i].vk = value;
-      CPUstate.RSModule.IntegerRS[i].qk = -1;
+    if (!IntegerRSModule.IntegerRS[i].free && IntegerRSModule.IntegerRS[i].qk == robIndex) {
+      CPUstate.IntegerRSModule.IntegerRS[i].vk = value;
+      CPUstate.IntegerRSModule.IntegerRS[i].qk = -1;
     }
   }
   for (int i = 0; i < LOADRS_CAP; i++) {
-    if (!RSModule.LoadRS[i].free && RSModule.LoadRS[i].qj == robIndex) {
-      CPUstate.RSModule.LoadRS[i].vj = value;
-      CPUstate.RSModule.LoadRS[i].qj = -1;
+    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qj == robIndex) {
+      CPUstate.LoadRSModule.LoadRS[i].vj = value;
+      CPUstate.LoadRSModule.LoadRS[i].qj = -1;
     }
-    if (!RSModule.LoadRS[i].free && RSModule.LoadRS[i].qk == robIndex) {
-      CPUstate.RSModule.LoadRS[i].vk = value;
-      CPUstate.RSModule.LoadRS[i].qk = -1;
-    }
-  }
-  for (int i = 0; i < STORERS_CAP; i++) {
-    if (!RSModule.StoreRS[i].free && RSModule.StoreRS[i].qj == robIndex) {
-      CPUstate.RSModule.StoreRS[i].vj = value;
-      CPUstate.RSModule.StoreRS[i].qj = -1;
+    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qk == robIndex) {
+      CPUstate.LoadRSModule.LoadRS[i].vk = value;
+      CPUstate.LoadRSModule.LoadRS[i].qk = -1;
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
-    if (!RSModule.MicroStoreRS[i].free &&
-        RSModule.MicroStoreRS[i].qrs2 == robIndex) {
-      CPUstate.RSModule.MicroStoreRS[i].vrs2 = value;
-      CPUstate.RSModule.MicroStoreRS[i].qrs2 = -1;
+    if (!StoreAddressRSModule.StoreAddressRS[i].free && StoreAddressRSModule.StoreAddressRS[i].qj == robIndex) {
+      CPUstate.StoreAddressRSModule.StoreAddressRS[i].vj = value;
+      CPUstate.StoreAddressRSModule.StoreAddressRS[i].qj = -1;
+    }
+  }
+  for (int i = 0; i < STORERS_CAP; i++) {
+    if (!StoreValueRSModule.StoreValueRS[i].free &&
+        StoreValueRSModule.StoreValueRS[i].qrs2 == robIndex) {
+      CPUstate.StoreValueRSModule.StoreValueRS[i].vrs2 = value;
+      CPUstate.StoreValueRSModule.StoreValueRS[i].qrs2 = -1;
     }
   }
   for (int i = 0; i < BRANCHRS_CAP; i++) {
-    if (!RSModule.BranchRS[i].free && RSModule.BranchRS[i].qj == robIndex) {
-      CPUstate.RSModule.BranchRS[i].vj = value;
-      CPUstate.RSModule.BranchRS[i].qj = -1;
+    if (!BranchRSModule.BranchRS[i].free && BranchRSModule.BranchRS[i].qj == robIndex) {
+      CPUstate.BranchRSModule.BranchRS[i].vj = value;
+      CPUstate.BranchRSModule.BranchRS[i].qj = -1;
     }
-    if (!RSModule.BranchRS[i].free && RSModule.BranchRS[i].qk == robIndex) {
-      CPUstate.RSModule.BranchRS[i].vk = value;
-      CPUstate.RSModule.BranchRS[i].qk = -1;
+    if (!BranchRSModule.BranchRS[i].free && BranchRSModule.BranchRS[i].qk == robIndex) {
+      CPUstate.BranchRSModule.BranchRS[i].vk = value;
+      CPUstate.BranchRSModule.BranchRS[i].qk = -1;
     }
   }
 }
@@ -982,46 +983,46 @@ void CPU::flush() {
   if (squashDetect.needSquash) {
     // 1. clear the wrong RS
     for (int i = 0; i < INTEGERRS_CAP; i++) {
-      if (!RSModule.IntegerRS[i].free &&
-          ROBModule.getSeq(RSModule.IntegerRS[i].robIndex) >
+      if (!IntegerRSModule.IntegerRS[i].free &&
+          ROBModule.getSeq(IntegerRSModule.IntegerRS[i].robIndex) >
               squashDetect.SquashSeq) {
-        CPUstate.RSModule.IntegerRS[i].free = true;
-        CPUstate.RSModule.IntegerRS[i].qj = -1;
-        CPUstate.RSModule.IntegerRS[i].qk = -1;
+        CPUstate.IntegerRSModule.IntegerRS[i].free = true;
+        CPUstate.IntegerRSModule.IntegerRS[i].qj = -1;
+        CPUstate.IntegerRSModule.IntegerRS[i].qk = -1;
       }
     }
     for (int i = 0; i < LOADRS_CAP; i++) {
-      if (!RSModule.LoadRS[i].free &&
-          ROBModule.getSeq(RSModule.LoadRS[i].robIndex) >
+      if (!LoadRSModule.LoadRS[i].free &&
+          ROBModule.getSeq(LoadRSModule.LoadRS[i].robIndex) >
               squashDetect.SquashSeq) {
-        CPUstate.RSModule.LoadRS[i].free = true;
-        CPUstate.RSModule.LoadRS[i].qj = -1;
-        CPUstate.RSModule.LoadRS[i].qk = -1;
+        CPUstate.LoadRSModule.LoadRS[i].free = true;
+        CPUstate.LoadRSModule.LoadRS[i].qj = -1;
+        CPUstate.LoadRSModule.LoadRS[i].qk = -1;
       }
     }
     for (int i = 0; i < STORERS_CAP; i++) {
-      if (!RSModule.StoreRS[i].free &&
-          ROBModule.getSeq(RSModule.StoreRS[i].robIndex) >
+      if (!StoreAddressRSModule.StoreAddressRS[i].free &&
+          ROBModule.getSeq(StoreAddressRSModule.StoreAddressRS[i].robIndex) >
               squashDetect.SquashSeq) {
-        CPUstate.RSModule.StoreRS[i].free = true;
-        CPUstate.RSModule.StoreRS[i].qj = -1;
+        CPUstate.StoreAddressRSModule.StoreAddressRS[i].free = true;
+        CPUstate.StoreAddressRSModule.StoreAddressRS[i].qj = -1;
       }
     }
     for (int i = 0; i < BRANCHRS_CAP; i++) {
-      if (!RSModule.BranchRS[i].free &&
-          ROBModule.getSeq(RSModule.BranchRS[i].robIndex) >
+      if (!BranchRSModule.BranchRS[i].free &&
+          ROBModule.getSeq(BranchRSModule.BranchRS[i].robIndex) >
               squashDetect.SquashSeq) {
-        CPUstate.RSModule.BranchRS[i].free = true;
-        CPUstate.RSModule.BranchRS[i].qj = -1;
-        CPUstate.RSModule.BranchRS[i].qk = -1;
+        CPUstate.BranchRSModule.BranchRS[i].free = true;
+        CPUstate.BranchRSModule.BranchRS[i].qj = -1;
+        CPUstate.BranchRSModule.BranchRS[i].qk = -1;
       }
     }
     for (int i = 0; i < STORERS_CAP; i++) {
-      if (!RSModule.MicroStoreRS[i].free &&
-          ROBModule.getSeq(RSModule.MicroStoreRS[i].robIndex) >
+      if (!StoreValueRSModule.StoreValueRS[i].free &&
+          ROBModule.getSeq(StoreValueRSModule.StoreValueRS[i].robIndex) >
               squashDetect.SquashSeq) {
-        CPUstate.RSModule.MicroStoreRS[i].free = true;
-        CPUstate.RSModule.MicroStoreRS[i].qrs2 = -1;
+        CPUstate.StoreValueRSModule.StoreValueRS[i].free = true;
+        CPUstate.StoreValueRSModule.StoreValueRS[i].qrs2 = -1;
       }
     }
     // 2. clear the wrong LSQ
@@ -1064,7 +1065,14 @@ void CPU::flush() {
   }
 }
 void CPU::read() {
-  memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
+  memcpy(&IntegerRSModule, &CPUstate.IntegerRSModule,
+         sizeof(IntegerRSModule));
+  memcpy(&StoreAddressRSModule, &CPUstate.StoreAddressRSModule,
+         sizeof(StoreAddressRSModule));
+  memcpy(&StoreValueRSModule, &CPUstate.StoreValueRSModule,
+         sizeof(StoreValueRSModule));
+  memcpy(&LoadRSModule, &CPUstate.LoadRSModule, sizeof(LoadRSModule));
+  memcpy(&BranchRSModule, &CPUstate.BranchRSModule, sizeof(BranchRSModule));
   memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
   memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
   memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));

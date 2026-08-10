@@ -2,7 +2,7 @@
 #include <cstdint>
 
 void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
-                     Operation op, int ROBTag) {
+                     Operation op, int robIndex, uint64_t robSeq) {
   bool taken = false;
   switch (op) {
   case Operation::EQ:
@@ -27,7 +27,7 @@ void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
     taken = false;
     break;
   }
-  push({pc, taken ? pc + imm : pc + 4, ROBTag});
+  push({pc, taken ? pc + imm : pc + 4, robIndex, robSeq});
 }
 
 void BRU::push(BranchResult result) {
@@ -38,7 +38,7 @@ void BRU::push(BranchResult result) {
 BranchResult BRU::peek() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robTag < outputBuffer[best].robTag))
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   if (best >= 0)
@@ -64,18 +64,18 @@ bool BRU::isEmpty() const {
   return true;
 }
 
-void BRU::remove(int robTag) {
+void BRU::remove(uint64_t robSeq) {
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
+    if (slotValid[i] && outputBuffer[i].robSeq == robSeq) {
       slotValid[i] = false;
       return;
     }
   }
 }
 
-void BRU::flush(int tag) {
+void BRU::flush(uint64_t seq) {
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robTag > tag)
+    if (slotValid[i] && outputBuffer[i].robSeq > seq)
       slotValid[i] = false;
   }
 }

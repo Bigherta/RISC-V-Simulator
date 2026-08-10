@@ -18,18 +18,18 @@ void RegCluster::writeReg(int regNum, int32_t value) {
 
 int RegCluster::readRAT(int regNum) const { return RegisterTable[regNum]; }
 
-void RegCluster::setRAT(int regNum, int robTag) {
-  RegisterTable[regNum] = robTag;
+void RegCluster::setRAT(int regNum, int robIndex) {
+  RegisterTable[regNum] = robIndex;
 }
 
 OperandInfo RegCluster::readOperand(int regNum) const {
   if (regNum == 0)
     return {true, 0, -1};
-  int tag = RegisterTable[regNum];
-  if (tag == -1) {
+  int robIndex = RegisterTable[regNum];
+  if (robIndex == -1) {
     return {true, readReg(regNum), -1};
   }
-  return {false, 0, tag};
+  return {false, 0, robIndex};
 }
 
 void RegCluster::resetX0() { reg[0].write(0); }

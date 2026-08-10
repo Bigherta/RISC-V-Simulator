@@ -10,10 +10,10 @@ private:
 public:
   bool isFull() const;
   bool isEmpty() const;
-  void push(int32_t op1, int32_t op2, Operation op, int robTag,
+  void push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq,
             bool isAddress, bool isControl);
-  void remove(int robTag);
-  void flush(int tag);
+  void remove(uint64_t robSeq);
+  void flush(uint64_t seq);
   ExecuteResult peek() const;
   ExecuteResult getEntry(int index) const;
   bool isValid(int index) const { return slotValid[index]; }

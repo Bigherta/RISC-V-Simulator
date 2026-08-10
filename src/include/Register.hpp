@@ -18,7 +18,7 @@ public:
 struct OperandInfo {
   bool ready;
   int32_t value;
-  int robTag;
+  int robIndex;
 };
 
 class RegCluster {
@@ -33,7 +33,7 @@ public:
   void writeReg(int regNum, int32_t value);
 
   int readRAT(int regNum) const;
-  void setRAT(int regNum, int robTag);
+  void setRAT(int regNum, int robIndex);
 
   OperandInfo readOperand(int regNum) const;
   void resetX0();

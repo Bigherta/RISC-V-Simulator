@@ -11,11 +11,12 @@ enum class ValueState {
 };
 struct LSQEntry {
   bool isLoad;
-  int ROBTag;
+  int robIndex;
+  uint64_t robSeq;
   uint32_t address;
   int32_t value;
   int n_bytes;
-  int knownBiggestStoreTag;
+  uint64_t knownBiggestStoreSeq;
   bool isAddressReady;
   ValueState valueState;
   bool isUnsigned;
@@ -24,7 +25,7 @@ struct LSQEntry {
 struct LSQWrite {
   uint8_t index;
   int32_t value;
-  int knownTag;
+  uint64_t knownSeq;
   bool setValue;
 };
 struct LSQStoreToLoadForwardPlan {
@@ -42,25 +43,28 @@ public:
   LSQ() { std::memset(this, 0, sizeof(*this)); }
   bool isEmpty() const;
   bool isFull() const;
-  void pushLoad(int ROBTag, int n_bytes, bool isUnsigned);
-  void pushStore(int ROBTag, int n_bytes);
+  void pushLoad(int robIndex, uint64_t robSeq, int n_bytes, bool isUnsigned);
+  void pushStore(int robIndex, uint64_t robSeq, int n_bytes);
   void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
   bool isReadyToCommit(int index) const;
-  int getIndex(int ROBTag) const;
+  int getIndexBySeq(uint64_t robSeq) const;
   void writeAddress(uint32_t address, int index);
   void writeValue(int32_t value, int index);
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;
   auto isHeadLoad() const -> bool;
-  auto headROBTag() const -> int;
+  auto headRobIndex() const -> int;
   auto headAddress() const -> uint32_t;
   auto headValue() const -> int32_t;
+  auto headRobSeq() const -> uint64_t;
   auto headIsUnsigned() const -> bool;
   auto headNBytes() const -> int;
-  auto getROBTag(int index) const -> int;
+  auto getRobIndex(int index) const -> int;
+  auto getRobSeq(int index) const -> uint64_t;
   auto getIsLoad(int index) const -> bool;
+  auto getEntry(int index) const -> LSQEntry;
   auto getIsUnsigned(int index) const -> bool;
   auto getNBytes(int index) const -> int;
   void setValueState(int index, ValueState state);
@@ -73,7 +77,7 @@ public:
   void applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan);
   int CDBDetect() const;
   int LoadDetect() const;
-  void flush(int tag);
+  void flush(uint8_t tailSnapshot);
 };
 
 #endif // LSQ_HPP

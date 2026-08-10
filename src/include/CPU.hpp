@@ -80,8 +80,8 @@ public:
   static Operation decodeOp(Instruct inst);
   void execute();
   void writeBack();
-  CDBBypassResult CDBBypass(int robTag) const;
-  void CDBBroadcast(int tag, int value);
+  CDBBypassResult CDBBypass(int robIndex) const;
+  void CDBBroadcast(int robIndex, int value);
   void commit();
   void flush();
   void run();

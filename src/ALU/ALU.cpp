@@ -1,7 +1,7 @@
 #include "../include/ALU.hpp"
 #include <cstdint>
-void ALU::push(int32_t op1, int32_t op2, Operation op, int robTag,
-               bool isAddress, bool isControl) {
+void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq,
+            bool isAddress, bool isControl) {
   int32_t value;
   if (isMemoryOp(op) || isControlOp(op)) {
     value = op1 + op2;
@@ -48,7 +48,7 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robTag,
       break;
     }
   }
-  ExecuteResult result{value, robTag, isAddress, isControl};
+  ExecuteResult result{value, robIndex, robSeq, isAddress, isControl};
   for (int i = 0; i < ALU_CAP; i++)
     if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
 }
@@ -56,7 +56,7 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robTag,
 ExecuteResult ALU::peek() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robTag < outputBuffer[best].robTag))
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   if (best >= 0)
@@ -82,18 +82,18 @@ bool ALU::isEmpty() const {
   return true;
 }
 
-void ALU::remove(int robTag) {
+void ALU::remove(uint64_t robSeq) {
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
+    if (slotValid[i] && outputBuffer[i].robSeq == robSeq) {
       slotValid[i] = false;
       return;
     }
   }
 }
 
-void ALU::flush(int tag) {
+void ALU::flush(uint64_t seq) {
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robTag > tag)
+    if (slotValid[i] && outputBuffer[i].robSeq > seq)
       slotValid[i] = false;
   }
 }

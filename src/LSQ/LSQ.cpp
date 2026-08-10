@@ -1,4 +1,5 @@
 #include "../include/LSQ.hpp"
+#include <algorithm>
 #include <stdexcept>
 
 bool LSQ::isEmpty() const { return tail == head; }
@@ -8,10 +9,12 @@ bool LSQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
 void LSQ::pop() { head = (head + 1) & 0x3F; }
 
-void LSQ::pushLoad(int ROBTag, int n_bytes, bool isUnsigned) {
+void LSQ::pushLoad(int robIndex, uint64_t robSeq, int n_bytes,
+                   bool isUnsigned) {
   LSQqueue[tail] = {};
   LSQqueue[tail].isLoad = true;
-  LSQqueue[tail].ROBTag = ROBTag;
+  LSQqueue[tail].robIndex = robIndex;
+  LSQqueue[tail].robSeq = robSeq;
   LSQqueue[tail].n_bytes = n_bytes;
   LSQqueue[tail].isUnsigned = isUnsigned;
   LSQqueue[tail].isAddressReady = false;
@@ -19,10 +22,11 @@ void LSQ::pushLoad(int ROBTag, int n_bytes, bool isUnsigned) {
   tail = (tail + 1) & 0x3F;
 }
 
-void LSQ::pushStore(int ROBTag, int n_bytes) {
+void LSQ::pushStore(int robIndex, uint64_t robSeq, int n_bytes) {
   LSQqueue[tail] = {};
   LSQqueue[tail].isLoad = false;
-  LSQqueue[tail].ROBTag = ROBTag;
+  LSQqueue[tail].robIndex = robIndex;
+  LSQqueue[tail].robSeq = robSeq;
   LSQqueue[tail].n_bytes = n_bytes;
   LSQqueue[tail].isAddressReady = false;
   LSQqueue[tail].valueState = ValueState::NOTREADY;
@@ -32,25 +36,15 @@ void LSQ::pushStore(int ROBTag, int n_bytes) {
 uint8_t LSQ::getHead() const { return head; }
 uint8_t LSQ::getTail() const { return tail; }
 
-int LSQ::getIndex(int ROBTag) const {
+int LSQ::getIndexBySeq(uint64_t robSeq) const {
   for (uint8_t cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
-    if (LSQqueue[cur].ROBTag == ROBTag)
+    if (LSQqueue[cur].robSeq == robSeq)
       return cur;
   }
   return -1;
 }
 
-void LSQ::flush(int tag) {
-  int first_flushed = -1;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
-    if (LSQqueue[cur].ROBTag > tag) {
-      if (first_flushed == -1)
-        first_flushed = cur;
-    }
-  }
-  if (first_flushed != -1)
-    tail = first_flushed;
-}
+void LSQ::flush(uint8_t tailSnapshot) { tail = tailSnapshot; }
 
 void LSQ::writeAddress(uint32_t address, int index) {
   LSQqueue[index].address = address;
@@ -87,19 +81,27 @@ auto LSQ::getValue(int index) const -> int32_t {
 
 auto LSQ::isHeadLoad() const -> bool { return LSQqueue[head].isLoad; }
 
-auto LSQ::headROBTag() const -> int { return LSQqueue[head].ROBTag; }
+auto LSQ::headRobIndex() const -> int { return LSQqueue[head].robIndex; }
 
 auto LSQ::headAddress() const -> uint32_t { return LSQqueue[head].address; }
 
 auto LSQ::headValue() const -> int32_t { return LSQqueue[head].value; }
 
+auto LSQ::headRobSeq() const -> uint64_t { return LSQqueue[head].robSeq; }
+
 auto LSQ::headIsUnsigned() const -> bool { return LSQqueue[head].isUnsigned; }
 
 auto LSQ::headNBytes() const -> int { return LSQqueue[head].n_bytes; }
 
-auto LSQ::getROBTag(int index) const -> int { return LSQqueue[index].ROBTag; }
+auto LSQ::getRobIndex(int index) const -> int { return LSQqueue[index].robIndex; }
+
+auto LSQ::getRobSeq(int index) const -> uint64_t {
+  return LSQqueue[index].robSeq;
+}
 
 auto LSQ::getIsLoad(int index) const -> bool { return LSQqueue[index].isLoad; }
+
+auto LSQ::getEntry(int index) const -> LSQEntry { return LSQqueue[index]; }
 
 auto LSQ::getIsUnsigned(int index) const -> bool {
   return LSQqueue[index].isUnsigned;
@@ -121,8 +123,8 @@ auto LSQ::planDataForward(int index,
         LSQqueue[i].address == LSQqueue[index].address) {
       plan.writes[plan.count++] = {
           static_cast<uint8_t>(i), value,
-          std::max(LSQqueue[i].knownBiggestStoreTag,
-                   LSQqueue[knownBiggestSameAddrStore].ROBTag),
+          std::max(LSQqueue[i].knownBiggestStoreSeq,
+                   LSQqueue[knownBiggestSameAddrStore].robSeq),
           unknownBiggestStore == index && knownBiggestSameAddrStore == index};
     } else if (!LSQqueue[i].isLoad) {
       if (!LSQqueue[i].isAddressReady) {
@@ -148,8 +150,8 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
           LSQqueue[i].address == address) {
         plan.writes[plan.count++] = {
             static_cast<uint8_t>(i), LSQqueue[index].value,
-            std::max(LSQqueue[i].knownBiggestStoreTag,
-                     LSQqueue[knownBiggestSameAddrStore].ROBTag),
+            std::max(LSQqueue[i].knownBiggestStoreSeq,
+                     LSQqueue[knownBiggestSameAddrStore].robSeq),
             unknownBiggestStore == index &&
                 knownBiggestSameAddrStore == index &&
                 LSQqueue[index].valueState == ValueState::READY};
@@ -167,7 +169,8 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
       if (!LSQqueue[i].isLoad) {
         if (LSQqueue[i].isAddressReady && LSQqueue[i].address == address) {
           plan.writes[plan.count++] = {static_cast<uint8_t>(index),
-                                       LSQqueue[i].value, LSQqueue[i].ROBTag,
+                                       LSQqueue[i].value,
+                                       LSQqueue[i].robSeq,
                                        unknownBiggestStore == index &&
                                            LSQqueue[i].valueState ==
                                                ValueState::READY};
@@ -184,7 +187,7 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
 void LSQ::applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan) {
   for (uint8_t k = 0; k < plan.count; ++k) {
     LSQWrite w = plan.writes[k];
-    LSQqueue[w.index].knownBiggestStoreTag = w.knownTag;
+    LSQqueue[w.index].knownBiggestStoreSeq = w.knownSeq;
     if (w.setValue)
       writeValue(w.value, w.index);
   }

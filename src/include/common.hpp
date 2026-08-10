@@ -76,12 +76,13 @@ struct Instruct {
 struct IssueResult {
   bool valid = false;
   int rd = 0;
-  int tag = -1;
+  int robIndex = -1;
 };
 
 struct ExecuteResult {
   int32_t value;
-  int robTag;
+  int robIndex;
+  uint64_t robSeq;
   bool isAddress;
   bool isControl;
 };
@@ -89,7 +90,8 @@ struct ExecuteResult {
 struct BranchResult {
   int pcFrom;
   int pcResult;
-  int robTag;
+  int robIndex;
+  uint64_t robSeq;
 };
 
 struct CDBInfo {
@@ -105,7 +107,8 @@ struct MemRequest {
   uint32_t address;
   bool isSigned;
   int n_bytes;
-  int ROBTag;
+  int robIndex;
+  uint64_t robSeq;
 };
 
 struct RATWritePort {
@@ -116,7 +119,8 @@ struct RATWritePort {
 
 struct SquashInfo {
   bool needSquash = false;
-  int SquashTag = -1;
+  int SquashIndex = -1;
+  uint64_t SquashSeq = 0;
   uint32_t SquashPC = 0;
 };
 

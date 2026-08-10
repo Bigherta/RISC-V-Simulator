@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <cstring>
 #ifndef ARBITER_HPP
 #define ARBITER_HPP
@@ -47,8 +48,8 @@ public:
     if (w == FLUSHARBITER_CAP)
       throw std::runtime_error("flush arbiter overload!");
     int pos = 0;
-    while (pos < w && requests[pos].requestArgs.SquashTag <
-                         request.SquashTag)
+    while (pos < w && requests[pos].requestArgs.SquashSeq <
+                         request.SquashSeq)
       ++pos;
     for (int i = FLUSHARBITER_CAP - 1; i > pos; --i)
       requests[i] = requests[i - 1];
@@ -57,21 +58,21 @@ public:
   }
   SquashInfo arbitResult() const {
     SquashInfo result{};
-    int minTag = ~0u >> 1;
+    uint64_t minSeq = ~0ull >> 1;
     for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
       if (requests[i].valid) {
-        if (requests[i].requestArgs.SquashTag < minTag) {
+        if (requests[i].requestArgs.SquashSeq < minSeq) {
           result = requests[i].requestArgs;
-          minTag = requests[i].requestArgs.SquashTag;
+          minSeq = requests[i].requestArgs.SquashSeq;
         }
       }
     }
     return result;
   }
-  void clear(int tag) {
+  void clear(uint64_t seq) {
     for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
       if (requests[i].valid) {
-        if (requests[i].requestArgs.SquashTag >= tag) {
+        if (requests[i].requestArgs.SquashSeq >= seq) {
           requests[i].valid = false;
         }
       }
@@ -85,10 +86,10 @@ public:
   static CDBOutput arbitrate(const ALU &ALUModule, const LSQ &LSQModule,
                              const SquashInfo &squash) {
     bool needSquash = squash.needSquash;
-    int squashTag = squash.SquashTag;
+    uint64_t squashSeq = squash.SquashSeq;
     bool aluValid = !ALUModule.isEmpty();
     ExecuteResult aluResult = aluValid ? ALUModule.peek() : ExecuteResult{};
-    if (aluValid && needSquash && aluResult.robTag > squashTag)
+    if (aluValid && needSquash && aluResult.robSeq > squashSeq)
       aluValid = false;
 
     auto lsqCDBDetect = LSQModule.CDBDetect();
@@ -96,12 +97,13 @@ public:
     ExecuteResult lsqResult{};
     if (lsqValid) {
       lsqResult.isAddress = false;
-      lsqResult.robTag = LSQModule.getROBTag(lsqCDBDetect);
+      lsqResult.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
+      lsqResult.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
       lsqResult.value = LSQModule.getValue(lsqCDBDetect);
-      if (needSquash && lsqResult.robTag > squashTag)
+      if (needSquash && lsqResult.robSeq > squashSeq)
         lsqValid = false;
     }
-    CDBOutput out = {{0, 0, false}, false, false, false};
+    CDBOutput out = {{0, 0, 0, false, false}, false, false, false};
 
     if (!aluValid && !lsqValid)
       return out;
@@ -120,7 +122,7 @@ public:
       return out;
     }
 
-    if (aluResult.robTag <= lsqResult.robTag) {
+    if (aluResult.robSeq <= lsqResult.robSeq) {
       out.result = aluResult;
       out.valid = true;
       out.aluGranted = true;

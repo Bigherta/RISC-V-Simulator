@@ -7,10 +7,11 @@ bool ROB::isFull() const { return ((tail + 1) & 0x3F) == head; }
 bool ROB::isEmpty() const { return head == tail; }
 
 int ROB::push(ROBEntry entry) {
-  entry.tag = ROB_Tag;
+  entry.seq = next_seq++;
   ROBqueue[tail] = entry;
+  int index = tail;
   tail = (tail + 1) & 0x3F;
-  return ROB_Tag++;
+  return index;
 }
 
 ROBEntry ROB::pop() {
@@ -25,16 +26,29 @@ ROBEntry ROB::peek() const {
   return ROBqueue[head];
 }
 
-int ROB::getIndex(int Tag) const {
-  for (int i = head; i != tail; i = (i + 1) & 0x3F) {
-    if (ROBqueue[i].tag == Tag) {
-      return i;
-    }
-  }
-  return -1;
+uint64_t ROB::getSeq(int index) const { return ROBqueue[index].seq; }
+
+bool ROB::isValueValidAt(int index) const {
+  return ROBqueue[index].isValueValid;
 }
 
-ROBEntry ROB::getEntry(int index) const { return ROBqueue[index]; }
+bool ROB::isCommitReadyAt(int index) const {
+  return ROBqueue[index].isCommitReady;
+}
+
+int32_t ROB::getValue(int index) const { return ROBqueue[index].value; }
+
+ROBType ROB::getType(int index) const { return ROBqueue[index].type; }
+
+int ROB::getDest(int index) const { return ROBqueue[index].dest; }
+
+int32_t ROB::getPC(int index) const { return ROBqueue[index].pc; }
+
+bool ROB::getHalt(int index) const { return ROBqueue[index].halt; }
+
+const BranchPredictorSnapshot &ROB::getRASCkpt(int index) const {
+  return ROBqueue[index].ras_ckpt;
+}
 
 void ROB::writeROBValue(int32_t value, int index) {
   if (index < 0 || index >= ROB_CAP)
@@ -46,13 +60,13 @@ void ROB::writeROBPredictedPC(uint32_t pc, int index) {
     return;
   ROBqueue[index].predictedPC = pc;
 }
-void ROB::setROBCommitReady(int index){
+void ROB::setROBCommitReady(int index) {
   if (index < 0 || index >= ROB_CAP)
     return;
   ROBqueue[index].isCommitReady = true;
 }
 
-void ROB::setROBValueValid(int index){
+void ROB::setROBValueValid(int index) {
   if (index < 0 || index >= ROB_CAP)
     return;
   ROBqueue[index].isValueValid = true;
@@ -60,31 +74,15 @@ void ROB::setROBValueValid(int index){
 
 int ROB::getPredictedPC(int index) const { return ROBqueue[index].predictedPC; }
 
-int ROB::ClearRATDest() const { return peek().dest; }
+uint8_t ROB::getLsqTailSnapshot(int index) const { return ROBqueue[index].lsqTailSnapshot; }
 
-int ROB::headROB() const { return peek().tag; }
+bool ROB::isHeadCommitReady() const { return peek().isCommitReady; }
+bool ROB::isHeadValueValid() const { return peek().isValueValid; }
 
-bool ROB::isHeadCommitReady() const{
-  return peek().isCommitReady;
-}
-bool ROB::isHeadValueValid() const{
-  return peek().isValueValid;
-}
-
-uint64_t ROB::currentTag() const { return ROB_Tag; }
+uint64_t ROB::headSeq() const { return ROBqueue[head].seq; }
 
 int ROB::getHead() const { return head; }
 
 int ROB::getTail() const { return tail; }
 
-void ROB::flush(int tag) {
-  int first_flushed = -1;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
-    if (ROBqueue[cur].tag > tag) {
-      if (first_flushed == -1)
-        first_flushed = cur;
-    }
-  }
-  if (first_flushed != -1)
-    tail = first_flushed;
-}
+void ROB::flush(int squashIndex) { tail = (squashIndex + 1) & 0x3F; }

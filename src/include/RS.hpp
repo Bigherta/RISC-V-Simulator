@@ -10,7 +10,7 @@ struct ReservationStation {
   int32_t vk = 0;
   int qj = -1;
   int qk = -1;
-  int ROB_dest = ~0u >> 1;
+  int robIndex = ~0u >> 1;
   ReservationStation() : free(true) {}
   ReservationStation(Operation type) : op(type), free(true) {}
 };
@@ -19,7 +19,7 @@ struct StoreMicroReservationStation {
   bool free;
   int32_t vrs2 = 0;
   int qrs2 = -1;
-  int ROB_dest = ~0u >> 1;
+  int robIndex = ~0u >> 1;
   StoreMicroReservationStation() : free(true) {}
 };
 

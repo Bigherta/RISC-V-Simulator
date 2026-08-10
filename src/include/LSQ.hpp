@@ -64,7 +64,6 @@ public:
   auto getRobIndex(int index) const -> int;
   auto getRobSeq(int index) const -> uint64_t;
   auto getIsLoad(int index) const -> bool;
-  auto getEntry(int index) const -> LSQEntry;
   auto getIsUnsigned(int index) const -> bool;
   auto getNBytes(int index) const -> int;
   void setValueState(int index, ValueState state);

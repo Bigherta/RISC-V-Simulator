@@ -18,20 +18,20 @@ void INQ::push(uint32_t raw, int pc, int32_t predictedPC,
   tail = (tail + 1) & (INQ_CAP - 1);
 }
 
-int32_t INQ::peekPredictedPC() const {
+int32_t INQ::headPredictedPC() const {
   if (isEmpty())
-    throw std::runtime_error("peekPredictedPC an empty INQ!");
+    throw std::runtime_error("headPredictedPC on empty INQ!");
   return INQqueue[head].predictedPC;
 }
-BranchPredictorSnapshot INQ::peekRASCkpt() const {
+BranchPredictorSnapshot INQ::headRASCkpt() const {
   if (isEmpty())
-    throw std::runtime_error("peekCheckPoint an empty INQ!");
+    throw std::runtime_error("headRASCkpt on empty INQ!");
   return INQqueue[head].ras_ckpt;
 }
 
-Instruct INQ::peek() const {
+Instruct INQ::headNinst() const {
   if (isEmpty())
-    throw std::runtime_error("peek an empty INQ!");
+    throw std::runtime_error("headNinst on empty INQ!");
   return INQqueue[head].ninst;
 }
 
@@ -65,7 +65,7 @@ void INQ::decode(int index) {
 
 bool INQ::headDecoded() const { return !isEmpty() && INQqueue[head].decoded; }
 
-INQEntry INQ::getEntry(int index) const { return INQqueue[index]; }
+// index-based getters removed; use head* accessors for head entry
 
 void INQ::clear() {
   std::memset(this, 0, sizeof(*this));

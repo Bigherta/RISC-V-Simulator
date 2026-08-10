@@ -112,13 +112,13 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.peekPredictedPC();
+  newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
   if (isControl) {
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
     newROB.isValueValid = true;
-    newROB.ras_ckpt = INQModule.peekRASCkpt();
+    newROB.ras_ckpt = INQModule.headRASCkpt();
     auto ratSnap = REGModule.snapshotRAT();
     memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
     if (destination != 0)
@@ -150,13 +150,13 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.peekPredictedPC();
+  newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
   if (isControl) {
     newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
     newROB.isValueValid = true;
-    newROB.ras_ckpt = INQModule.peekRASCkpt();
+    newROB.ras_ckpt = INQModule.headRASCkpt();
     auto ratSnap = REGModule.snapshotRAT();
     memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
     if (destination != 0)
@@ -216,9 +216,9 @@ IssueResult CPU::issue_B(Instruct inst) {
   }
   ROBEntry newROB(ROBType::BRANCH);
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.peekPredictedPC();
+  newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.ras_ckpt = INQModule.peekRASCkpt();
+  newROB.ras_ckpt = INQModule.headRASCkpt();
   auto ratSnap = REGModule.snapshotRAT();
   memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
   int robIndex = CPUstate.ROBModule.push(newROB);
@@ -357,7 +357,7 @@ void CPU::issue() {
 
     IssueResult res{false, 0, -1};
     if (!INQModule.isEmpty() && INQModule.headDecoded()) {
-      Instruct inst = INQModule.peek();
+      Instruct inst = INQModule.headNinst();
       switch (inst.type) {
       case RISC_V::R: {
         res = issue_IntegerRS(inst, true, false, false);
@@ -845,35 +845,37 @@ void CPU::writeBack() {
   }
   SquashInfo BranchSquash;
   if (!BRUModule.isEmpty()) {
-    auto BranchResult = BRUModule.peek();
-    auto index = BranchResult.robIndex;
+    int index = BRUModule.headRobIndex();
+    uint64_t brRobSeq = BRUModule.headRobSeq();
+    int pcResult = BRUModule.headPCResult();
+    int pcFrom = BRUModule.headPCFrom();
     if (index >= 0) {
       ++branchTotal;
-      if (BranchResult.pcResult == ROBModule.getPredictedPC(index)) {
+      if (pcResult == ROBModule.getPredictedPC(index)) {
         ++branchCorrect;
       }
     }
     if (index >= 0 && (!squashDetect.needSquash ||
                        (squashDetect.needSquash &&
-                        BranchResult.robSeq < squashDetect.SquashSeq))) {
-      auto actualPC = BranchResult.pcResult;
-      auto taken = actualPC != BranchResult.pcFrom + 4;
+                        brRobSeq < squashDetect.SquashSeq))) {
+      auto actualPC = pcResult;
+      auto taken = actualPC != pcFrom + 4;
       if (actualPC != ROBModule.getPredictedPC(index)) {
         if (debug::enabled(debug::TOPIC_BRANCH))
           debug::print("squash seq=%llu pc=%u (from %u)\n",
-                       static_cast<unsigned long long>(BranchResult.robSeq),
-                       actualPC, BranchResult.pcFrom);
+                       static_cast<unsigned long long>(brRobSeq),
+                       actualPC, pcFrom);
         BranchSquash.needSquash = true;
         BranchSquash.SquashPC = actualPC;
         BranchSquash.SquashIndex = index;
-        BranchSquash.SquashSeq = BranchResult.robSeq;
+        BranchSquash.SquashSeq = brRobSeq;
       }
-      CPUstate.BPModule.update(BranchResult.pcFrom, taken,
-                               BranchResult.pcResult,
+      CPUstate.BPModule.update(pcFrom, taken,
+                               pcResult,
                                ROBModule.getRASCkpt(index).GHR_snapshot);
       CPUstate.ROBModule.setROBCommitReady(index);
     }
-    CPUstate.BRUModule.remove(BranchResult.robSeq);
+    CPUstate.BRUModule.remove(brRobSeq);
   }
 
   CDBOutput cdbOut = cdbArbiter;

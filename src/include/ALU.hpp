@@ -14,8 +14,11 @@ public:
             bool isAddress, bool isControl);
   void remove(uint64_t robSeq);
   void flush(uint64_t seq);
-  ExecuteResult peek() const;
-  ExecuteResult getEntry(int index) const;
+  int32_t headValue() const;
+  int headRobIndex() const;
+  uint64_t headRobSeq() const;
+  bool headIsAddress() const;
+  bool headIsControl() const;
   bool isValid(int index) const { return slotValid[index]; }
 };
 #endif // ALU_HPP

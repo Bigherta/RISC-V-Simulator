@@ -101,8 +101,6 @@ auto LSQ::getRobSeq(int index) const -> uint64_t {
 
 auto LSQ::getIsLoad(int index) const -> bool { return LSQqueue[index].isLoad; }
 
-auto LSQ::getEntry(int index) const -> LSQEntry { return LSQqueue[index]; }
-
 auto LSQ::getIsUnsigned(int index) const -> bool {
   return LSQqueue[index].isUnsigned;
 }

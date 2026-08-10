@@ -53,18 +53,46 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t ro
     if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
 }
 
-ExecuteResult ALU::peek() const {
+int32_t ALU::headValue() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
     if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
-  if (best >= 0)
-    return outputBuffer[best];
-  return {};
+  return best >= 0 ? outputBuffer[best].value : 0;
 }
-
-ExecuteResult ALU::getEntry(int index) const { return outputBuffer[index]; }
+int ALU::headRobIndex() const {
+  int best = -1;
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].robIndex : -1;
+}
+uint64_t ALU::headRobSeq() const {
+  int best = -1;
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].robSeq : 0;
+}
+bool ALU::headIsAddress() const {
+  int best = -1;
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].isAddress : false;
+}
+bool ALU::headIsControl() const {
+  int best = -1;
+  for (int i = 0; i < ALU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].isControl : false;
+}
 
 bool ALU::isFull() const {
   for (int i = 0; i < ALU_CAP; i++) {

@@ -35,18 +35,38 @@ void BRU::push(BranchResult result) {
     if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
 }
 
-BranchResult BRU::peek() const {
+int32_t BRU::headPCFrom() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
     if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
-  if (best >= 0)
-    return outputBuffer[best];
-  return {};
+  return best >= 0 ? outputBuffer[best].pcFrom : 0;
 }
-
-BranchResult BRU::getEntry(int index) const { return outputBuffer[index]; }
+int32_t BRU::headPCResult() const {
+  int best = -1;
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].pcResult : 0;
+}
+int BRU::headRobIndex() const {
+  int best = -1;
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].robIndex : -1;
+}
+uint64_t BRU::headRobSeq() const {
+  int best = -1;
+  for (int i = 0; i < BRU_CAP; i++) {
+    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+      best = i;
+  }
+  return best >= 0 ? outputBuffer[best].robSeq : 0;
+}
 
 bool BRU::isFull() const {
   for (int i = 0; i < BRU_CAP; i++) {

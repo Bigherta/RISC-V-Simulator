@@ -88,9 +88,16 @@ public:
     bool needSquash = squash.needSquash;
     uint64_t squashSeq = squash.SquashSeq;
     bool aluValid = !ALUModule.isEmpty();
-    ExecuteResult aluResult = aluValid ? ALUModule.peek() : ExecuteResult{};
-    if (aluValid && needSquash && aluResult.robSeq > squashSeq)
-      aluValid = false;
+    ExecuteResult aluResult{};
+    if (aluValid) {
+      aluResult.value = ALUModule.headValue();
+      aluResult.robIndex = ALUModule.headRobIndex();
+      aluResult.robSeq = ALUModule.headRobSeq();
+      aluResult.isAddress = ALUModule.headIsAddress();
+      aluResult.isControl = ALUModule.headIsControl();
+      if (needSquash && aluResult.robSeq > squashSeq)
+        aluValid = false;
+    }
 
     auto lsqCDBDetect = LSQModule.CDBDetect();
     bool lsqValid = lsqCDBDetect != -1;

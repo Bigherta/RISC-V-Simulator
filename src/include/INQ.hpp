@@ -26,9 +26,9 @@ public:
   
   void push(uint32_t raw, int pc, int32_t predictedPC,
             const BranchPredictorSnapshot &ckpt);
-  int32_t peekPredictedPC() const;
-  BranchPredictorSnapshot peekRASCkpt() const;
-  Instruct peek() const;
+  int32_t headPredictedPC() const;
+  BranchPredictorSnapshot headRASCkpt() const;
+  Instruct headNinst() const;
   Instruct pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
@@ -36,6 +36,6 @@ public:
   void decode(int index);
   void clear();
   bool headDecoded() const;
-  INQEntry getEntry(int index) const;
+  
 };
 #endif // INQ_HPP

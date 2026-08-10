@@ -16,8 +16,10 @@ public:
   void push(BranchResult);
   void remove(uint64_t robSeq);
   void flush(uint64_t seq);
-  BranchResult peek() const;
-  BranchResult getEntry(int index) const;
+  int32_t headPCFrom() const;
+  int32_t headPCResult() const;
+  int headRobIndex() const;
+  uint64_t headRobSeq() const;
   bool isValid(int index) const { return slotValid[index]; }
 };
 #endif // BRU_HPP

@@ -152,4 +152,13 @@ struct BranchPredictorSnapshot {
   uint32_t RAS_snapshot[RAS_CAP];
   uint16_t GHR_snapshot;
 };
+
+struct RATSnapshot {
+  int RAT_snapshot[REGISTER_CAP];
+};
+
+struct Checkpoint{
+  BranchPredictorSnapshot BPsnapshot;
+  RATSnapshot RATsnapshot;
+};
 #endif // COMMON_HPP

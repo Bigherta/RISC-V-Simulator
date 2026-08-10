@@ -119,6 +119,10 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
     newROB.type = ROBType::LINK;
     newROB.isValueValid = true;
     newROB.ras_ckpt = INQModule.peekRASCkpt();
+    auto ratSnap = REGModule.snapshotRAT();
+    memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
+    if (destination != 0)
+      newROB.rat_ckpt[destination] = ROBModule.getTail();
   }
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
@@ -153,6 +157,10 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
     newROB.type = ROBType::LINK;
     newROB.isValueValid = true;
     newROB.ras_ckpt = INQModule.peekRASCkpt();
+    auto ratSnap = REGModule.snapshotRAT();
+    memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
+    if (destination != 0)
+      newROB.rat_ckpt[destination] = ROBModule.getTail();
   }
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
@@ -211,6 +219,8 @@ IssueResult CPU::issue_B(Instruct inst) {
   newROB.predictedPC = INQModule.peekPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
   newROB.ras_ckpt = INQModule.peekRASCkpt();
+  auto ratSnap = REGModule.snapshotRAT();
+  memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
   int robIndex = CPUstate.ROBModule.push(newROB);
   BranchRS.robIndex = robIndex;
   for (int i = 0; i < BRANCHRS_CAP; i++) {
@@ -1029,27 +1039,23 @@ void CPU::flush() {
     CPUstate.LSQModule.flush(
         ROBModule.getLsqTailSnapshot(squashDetect.SquashIndex));
     // 3. clear the wrong RAT
-    for (int regNum = 0; regNum < REGISTER_CAP; ++regNum) {
-      auto ratIndex = REGModule.readRAT(regNum);
-      if (ratIndex >= 0 &&
-          ROBModule.getSeq(ratIndex) > squashDetect.SquashSeq) {
-        const auto head = ROBModule.getHead();
-        const auto tail = ROBModule.getTail();
-        bool repaired = false;
-        for (int index = head; index != tail;
-             index = (index + 1) & (ROB_CAP - 1)) {
-          if ((ROBModule.getType(index) == ROBType::REGISTER ||
-               ROBModule.getType(index) == ROBType::LINK) &&
-              ROBModule.getSeq(index) <= squashDetect.SquashSeq &&
-              ROBModule.getDest(index) == regNum) {
-            CPUstate.REGModule.setRAT(regNum, index);
-            repaired = true;
-          }
-        }
-        if (!repaired) {
-          CPUstate.REGModule.setRAT(regNum, -1);
+    if (squashDetect.SquashIndex >= 0) {
+      RATSnapshot snap;
+      memcpy(snap.RAT_snapshot,
+             ROBModule.getRATCkpt(squashDetect.SquashIndex),
+             sizeof(snap.RAT_snapshot));
+      const uint64_t ckptHead = ROBModule.headSeq();
+      const uint64_t ckptSeq = squashDetect.SquashSeq;
+      for (int regNum = 0; regNum < REGISTER_CAP; ++regNum) {
+        const int idx = snap.RAT_snapshot[regNum];
+        if (idx == -1)
+          continue;
+        const uint64_t s = ROBModule.getSeq(idx);
+        if (s < ckptHead || s > ckptSeq) {
+          snap.RAT_snapshot[regNum] = -1;
         }
       }
+      CPUstate.REGModule.restoreRAT(snap);
     }
     // 4. clear the wrong ALU outputBuffer
     CPUstate.ALUModule.flush(squashDetect.SquashSeq);

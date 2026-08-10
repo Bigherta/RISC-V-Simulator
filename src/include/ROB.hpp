@@ -2,6 +2,7 @@
 #ifndef ROB_HPP
 #define ROB_HPP
 #include "common.hpp"
+#include <cstring>
 #include <cstdint>
 enum class ROBType {
   REGISTER,
@@ -20,9 +21,12 @@ struct ROBEntry {
   int32_t pc = 0;
   bool halt = false;
   uint8_t lsqTailSnapshot = 0;
-  BranchPredictorSnapshot ras_ckpt;
-  ROBEntry() = default;
-  ROBEntry(ROBType type_) : type(type_) {}
+  int rat_ckpt[REGISTER_CAP];
+  BranchPredictorSnapshot ras_ckpt{};
+  ROBEntry() { std::memset(rat_ckpt, 0xFF, sizeof(rat_ckpt)); }
+  ROBEntry(ROBType type_) : type(type_) {
+    std::memset(rat_ckpt, 0xFF, sizeof(rat_ckpt));
+  }
 };
 
 class ROB {
@@ -55,6 +59,7 @@ public:
   int32_t getPC(int index) const;
   bool getHalt(int index) const;
   const BranchPredictorSnapshot &getRASCkpt(int index) const;
+  const int *getRATCkpt(int index) const;
   int getPredictedPC(int index) const;
   uint8_t getLsqTailSnapshot(int index) const;
   void writeROBValue(int32_t value, int index);

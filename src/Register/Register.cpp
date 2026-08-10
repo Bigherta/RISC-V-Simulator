@@ -1,8 +1,6 @@
 #include "../include/Register.hpp"
 
-RegCluster::RegCluster() {
-  std::memset(RegisterTable, 0xFF, sizeof(RegisterTable));
-}
+RegCluster::RegCluster() { std::memset(RAT, 0xFF, sizeof(RAT)); }
 
 int32_t RegCluster::readReg(int regNum) const {
   if (regNum == 0)
@@ -16,16 +14,14 @@ void RegCluster::writeReg(int regNum, int32_t value) {
   reg[regNum].write(value);
 }
 
-int RegCluster::readRAT(int regNum) const { return RegisterTable[regNum]; }
+int RegCluster::readRAT(int regNum) const { return RAT[regNum]; }
 
-void RegCluster::setRAT(int regNum, int robIndex) {
-  RegisterTable[regNum] = robIndex;
-}
+void RegCluster::setRAT(int regNum, int robIndex) { RAT[regNum] = robIndex; }
 
 OperandInfo RegCluster::readOperand(int regNum) const {
   if (regNum == 0)
     return {true, 0, -1};
-  int robIndex = RegisterTable[regNum];
+  int robIndex = RAT[regNum];
   if (robIndex == -1) {
     return {true, readReg(regNum), -1};
   }
@@ -33,3 +29,13 @@ OperandInfo RegCluster::readOperand(int regNum) const {
 }
 
 void RegCluster::resetX0() { reg[0].write(0); }
+
+RATSnapshot RegCluster::snapshotRAT() const {
+  RATSnapshot snapshot;
+  memcpy(snapshot.RAT_snapshot, RAT, sizeof(RAT));
+  return snapshot;
+}
+
+void RegCluster::restoreRAT(RATSnapshot snapshot) {
+  memcpy(RAT, snapshot.RAT_snapshot, sizeof(RAT));
+}

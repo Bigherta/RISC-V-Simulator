@@ -24,7 +24,7 @@ struct OperandInfo {
 class RegCluster {
 private:
   Register reg[REGISTER_CAP];
-  int RegisterTable[REGISTER_CAP];
+  int RAT[REGISTER_CAP];
 
 public:
   RegCluster();
@@ -34,7 +34,8 @@ public:
 
   int readRAT(int regNum) const;
   void setRAT(int regNum, int robIndex);
-
+  RATSnapshot snapshotRAT() const;
+  void restoreRAT(RATSnapshot);
   OperandInfo readOperand(int regNum) const;
   void resetX0();
 };

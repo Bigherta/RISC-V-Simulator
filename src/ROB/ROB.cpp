@@ -50,6 +50,10 @@ const BranchPredictorSnapshot &ROB::getRASCkpt(int index) const {
   return ROBqueue[index].ras_ckpt;
 }
 
+const int *ROB::getRATCkpt(int index) const {
+  return ROBqueue[index].rat_ckpt;
+}
+
 void ROB::writeROBValue(int32_t value, int index) {
   if (index < 0 || index >= ROB_CAP)
     return;

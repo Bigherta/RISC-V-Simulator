@@ -2,6 +2,7 @@
 #ifndef CPU_HPP
 #define CPU_HPP
 #include "ALU.hpp"
+#include "AGU.hpp"
 #include "Arbiter.hpp"
 #include "BRU.hpp"
 #include "INQ.hpp"
@@ -24,6 +25,7 @@ struct systemState {
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
+  AGU AGUModule;
   BRU BRUModule;
   LSQ LSQModule;
   INQ INQModule;
@@ -58,6 +60,7 @@ private:
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
+  AGU AGUModule;
   BRU BRUModule;
   LSQ LSQModule;
   INQ INQModule;

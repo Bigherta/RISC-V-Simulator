@@ -1,9 +1,9 @@
 #include "../include/ALU.hpp"
 #include <cstdint>
-void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq,
-            bool isAddress, bool isControl) {
+void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex,
+               uint64_t robSeq, bool isControl) {
   int32_t value;
-  if (isMemoryOp(op) || isControlOp(op)) {
+  if (isControlOp(op)) {
     value = op1 + op2;
   } else {
     switch (op) {
@@ -24,12 +24,10 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t ro
       value = op1 & op2;
       break;
     case Operation::SL:
-      value = static_cast<int32_t>(static_cast<uint32_t>(op1)
-                                   << (op2 & 0x1F));
+      value = static_cast<int32_t>(static_cast<uint32_t>(op1) << (op2 & 0x1F));
       break;
     case Operation::SRL:
-      value = static_cast<int32_t>(static_cast<uint32_t>(op1) >>
-                                   (op2 & 0x1F));
+      value = static_cast<int32_t>(static_cast<uint32_t>(op1) >> (op2 & 0x1F));
       break;
     case Operation::SRA:
       value = op1 >> (op2 & 0x1F);
@@ -48,15 +46,20 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t ro
       break;
     }
   }
-  ExecuteResult result{value, robIndex, robSeq, isAddress, isControl};
+  ArithmeticCalculateResult result{value, robIndex, robSeq, isControl};
   for (int i = 0; i < ALU_CAP; i++)
-    if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
+    if (!slotValid[i]) {
+      outputBuffer[i] = result;
+      slotValid[i] = true;
+      return;
+    }
 }
 
 int32_t ALU::headValue() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].value : 0;
@@ -64,7 +67,8 @@ int32_t ALU::headValue() const {
 int ALU::headRobIndex() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].robIndex : -1;
@@ -72,23 +76,17 @@ int ALU::headRobIndex() const {
 uint64_t ALU::headRobSeq() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].robSeq : 0;
 }
-bool ALU::headIsAddress() const {
-  int best = -1;
-  for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
-      best = i;
-  }
-  return best >= 0 ? outputBuffer[best].isAddress : false;
-}
 bool ALU::headIsControl() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].isControl : false;

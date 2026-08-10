@@ -10,6 +10,7 @@ set(CPU_SOURCES
     src/Memory/Memory.cpp
     src/ROB/ROB.cpp
     src/ALU/ALU.cpp
+    src/AGU/AGU.cpp
     src/BRU/BRU.cpp
     src/LSQ/LSQ.cpp
     src/Register/Register.cpp

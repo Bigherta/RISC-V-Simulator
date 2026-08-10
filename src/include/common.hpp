@@ -12,6 +12,7 @@ constexpr int INQ_CAP = 8;
 constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
+constexpr int AGU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int PC_Direct_CAP = 1 << 12;
 constexpr int SELECTOR_CAP = 1 << 12;
@@ -45,9 +46,6 @@ enum class Operation {
   JALR,
   OP_INVALID,
 };
-constexpr bool isMemoryOp(Operation op) {
-  return op == Operation::Load || op == Operation::Store;
-}
 constexpr bool isControlOp(Operation op) { return op == Operation::JALR; }
 enum class RISC_V {
   R,
@@ -79,12 +77,17 @@ struct IssueResult {
   int robIndex = -1;
 };
 
-struct ExecuteResult {
+struct ArithmeticCalculateResult {
   int32_t value;
   int robIndex;
   uint64_t robSeq;
-  bool isAddress;
   bool isControl;
+};
+
+struct AddressCalculateResult {
+  int32_t value;
+  int robIndex;
+  uint64_t robSeq;
 };
 
 struct BranchResult {
@@ -97,7 +100,7 @@ struct BranchResult {
 struct CDBInfo {
   uint8_t index;
   bool busy;
-  ExecuteResult result;
+  ArithmeticCalculateResult result;
 };
 
 struct MemRequest {
@@ -125,7 +128,7 @@ struct SquashInfo {
 };
 
 struct CDBOutput {
-  ExecuteResult result;
+  ArithmeticCalculateResult result;
   bool valid;
   bool aluGranted;
   bool lsqGranted;
@@ -157,7 +160,7 @@ struct RATSnapshot {
   int RAT_snapshot[REGISTER_CAP];
 };
 
-struct Checkpoint{
+struct Checkpoint {
   BranchPredictorSnapshot BPsnapshot;
   RATSnapshot RATsnapshot;
 };

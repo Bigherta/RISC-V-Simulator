@@ -6,7 +6,6 @@ bool LSQ::isEmpty() const { return tail == head; }
 
 bool LSQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
-
 void LSQ::pop() { head = (head + 1) & 0x3F; }
 
 void LSQ::pushLoad(int robIndex, uint64_t robSeq, int n_bytes,
@@ -93,7 +92,9 @@ auto LSQ::headIsUnsigned() const -> bool { return LSQqueue[head].isUnsigned; }
 
 auto LSQ::headNBytes() const -> int { return LSQqueue[head].n_bytes; }
 
-auto LSQ::getRobIndex(int index) const -> int { return LSQqueue[index].robIndex; }
+auto LSQ::getRobIndex(int index) const -> int {
+  return LSQqueue[index].robIndex;
+}
 
 auto LSQ::getRobSeq(int index) const -> uint64_t {
   return LSQqueue[index].robSeq;
@@ -117,8 +118,7 @@ auto LSQ::planDataForward(int index,
   int unknownBiggestStore = index;
   int knownBiggestSameAddrStore = index;
   for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
-    if (LSQqueue[i].isLoad &&
-        LSQqueue[i].address == LSQqueue[index].address) {
+    if (LSQqueue[i].isLoad && LSQqueue[i].address == LSQqueue[index].address) {
       plan.writes[plan.count++] = {
           static_cast<uint8_t>(i), value,
           std::max(LSQqueue[i].knownBiggestStoreSeq,
@@ -144,8 +144,7 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
     int unknownBiggestStore = index;
     int knownBiggestSameAddrStore = index;
     for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
-      if (LSQqueue[i].isLoad &&
-          LSQqueue[i].address == address) {
+      if (LSQqueue[i].isLoad && LSQqueue[i].address == address) {
         plan.writes[plan.count++] = {
             static_cast<uint8_t>(i), LSQqueue[index].value,
             std::max(LSQqueue[i].knownBiggestStoreSeq,
@@ -167,8 +166,7 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
       if (!LSQqueue[i].isLoad) {
         if (LSQqueue[i].isAddressReady && LSQqueue[i].address == address) {
           plan.writes[plan.count++] = {static_cast<uint8_t>(index),
-                                       LSQqueue[i].value,
-                                       LSQqueue[i].robSeq,
+                                       LSQqueue[i].value, LSQqueue[i].robSeq,
                                        unknownBiggestStore == index &&
                                            LSQqueue[i].valueState ==
                                                ValueState::READY};
@@ -208,8 +206,7 @@ int LSQ::LoadDetect() const {
       if (LSQqueue[cur].valueState == ValueState::NOTREADY) {
         bool hasPendingSameAddrStore = false;
         for (int i = head; i != cur; i = (i + 1) & 0x3F) {
-          if (!LSQqueue[i].isLoad &&
-              LSQqueue[i].isAddressReady &&
+          if (!LSQqueue[i].isLoad && LSQqueue[i].isAddressReady &&
               LSQqueue[i].address == LSQqueue[cur].address) {
             hasPendingSameAddrStore = true;
             break;

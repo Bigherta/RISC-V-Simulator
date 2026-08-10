@@ -88,12 +88,11 @@ public:
     bool needSquash = squash.needSquash;
     uint64_t squashSeq = squash.SquashSeq;
     bool aluValid = !ALUModule.isEmpty();
-    ExecuteResult aluResult{};
+    ArithmeticCalculateResult aluResult{};
     if (aluValid) {
       aluResult.value = ALUModule.headValue();
       aluResult.robIndex = ALUModule.headRobIndex();
       aluResult.robSeq = ALUModule.headRobSeq();
-      aluResult.isAddress = ALUModule.headIsAddress();
       aluResult.isControl = ALUModule.headIsControl();
       if (needSquash && aluResult.robSeq > squashSeq)
         aluValid = false;
@@ -101,16 +100,15 @@ public:
 
     auto lsqCDBDetect = LSQModule.CDBDetect();
     bool lsqValid = lsqCDBDetect != -1;
-    ExecuteResult lsqResult{};
+    ArithmeticCalculateResult lsqResult{};
     if (lsqValid) {
-      lsqResult.isAddress = false;
       lsqResult.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
       lsqResult.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
       lsqResult.value = LSQModule.getValue(lsqCDBDetect);
       if (needSquash && lsqResult.robSeq > squashSeq)
         lsqValid = false;
     }
-    CDBOutput out = {{0, 0, 0, false, false}, false, false, false};
+    CDBOutput out = {};
 
     if (!aluValid && !lsqValid)
       return out;

@@ -1,23 +1,21 @@
 #pragma once
-#ifndef ALU_HPP
-#define ALU_HPP
+#ifndef AGU_HPP
+#define AGU_HPP
 #include "common.hpp"
-class ALU {
+class AGU {
   friend struct ReorderTester;
 private:
-  ArithmeticCalculateResult outputBuffer[ALU_CAP];
-  bool slotValid[ALU_CAP] = {};
+  AddressCalculateResult outputBuffer[AGU_CAP];
+  bool slotValid[AGU_CAP] = {};
 public:
   bool isFull() const;
   bool isEmpty() const;
-  void push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq,
-            bool isControl);
+  void push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq);
   void remove(uint64_t robSeq);
   void flush(uint64_t seq);
   int32_t headValue() const;
   int headRobIndex() const;
   uint64_t headRobSeq() const;
-  bool headIsControl() const;
   bool isValid(int index) const { return slotValid[index]; }
 };
-#endif // ALU_HPP
+#endif // AGU_HPP

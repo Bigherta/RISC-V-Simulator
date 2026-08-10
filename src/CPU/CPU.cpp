@@ -277,8 +277,8 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
 IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
 
   if (StoreAddressRSModule.isStoreAddressRSFull() ||
-      StoreValueRSModule.isStoreValueRSFull() ||
-      ROBModule.isFull() || LSQModule.isFull()) {
+      StoreValueRSModule.isStoreValueRSFull() || ROBModule.isFull() ||
+      LSQModule.isFull()) {
     return {false, 0, -1};
   }
   ReservationStation StoreRS{};
@@ -561,7 +561,6 @@ void CPU::execute() {
   // ALU execute
   if (!ALUModule.isFull()) {
     int Execute_RS_index = 0xFFFFFFFF;
-    int Execute_RS_type = -1;
     ReservationStation Execute_RS{};
     bool foundAny = false;
     for (int i = 0; i < INTEGERRS_CAP; ++i) {
@@ -570,16 +569,33 @@ void CPU::execute() {
         if (!foundAny) {
           Execute_RS = rs;
           Execute_RS_index = i;
-          Execute_RS_type = 0;
           foundAny = true;
         } else if (ROBModule.getSeq(rs.robIndex) <
                    ROBModule.getSeq(Execute_RS.robIndex)) {
           Execute_RS = rs;
           Execute_RS_index = i;
-          Execute_RS_type = 0;
         }
       }
     }
+    if (Execute_RS_index != 0xFFFFFFFF) {
+      uint64_t execSeq = ROBModule.getSeq(Execute_RS.robIndex);
+      if (!squashDetect.needSquash ||
+          (squashDetect.needSquash && execSeq < squashDetect.SquashSeq)) {
+        CPUstate.ALUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
+                                Execute_RS.robIndex, execSeq,
+                                isControlOp(Execute_RS.op));
+        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].free = true;
+        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qj = -1;
+        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qk = -1;
+      }
+    }
+  }
+  // AGU execute
+  if (!AGUModule.isFull()) {
+    int Execute_RS_index = 0xFFFFFFFF;
+    int Execute_RS_type = -1;
+    ReservationStation Execute_RS{};
+    bool foundAny = false;
     for (int i = 0; i < LOADRS_CAP; ++i) {
       auto rs = LoadRSModule.LoadRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
@@ -616,42 +632,38 @@ void CPU::execute() {
       uint64_t execSeq = ROBModule.getSeq(Execute_RS.robIndex);
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash && execSeq < squashDetect.SquashSeq)) {
-        CPUstate.ALUModule.push(
-            Execute_RS.vj, Execute_RS.vk, Execute_RS.op, Execute_RS.robIndex,
-            execSeq, isMemoryOp(Execute_RS.op), isControlOp(Execute_RS.op));
-        switch (Execute_RS_type) {
-        case 0:
-          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].free = true;
-          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qj = -1;
-          CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qk = -1;
-          break;
-        case 1:
+        CPUstate.AGUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
+                                Execute_RS.robIndex, execSeq);
+        if (Execute_RS_type == 1) {
           CPUstate.LoadRSModule.LoadRS[Execute_RS_index].free = true;
           CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qj = -1;
           CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qk = -1;
-          break;
-        case 2:
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].free = true;
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].qj = -1;
-          break;
+        } else {
+          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].free =
+              true;
+          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].qj =
+              -1;
         }
       }
     }
   }
   for (int i = 0; i < STORERS_CAP; ++i) {
-    if (!StoreValueRSModule.StoreValueRS[i].free && StoreValueRSModule.StoreValueRS[i].qrs2 == -1) {
-      uint64_t microSeq = ROBModule.getSeq(StoreValueRSModule.StoreValueRS[i].robIndex);
+    if (!StoreValueRSModule.StoreValueRS[i].free &&
+        StoreValueRSModule.StoreValueRS[i].qrs2 == -1) {
+      uint64_t microSeq =
+          ROBModule.getSeq(StoreValueRSModule.StoreValueRS[i].robIndex);
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash && microSeq < squashDetect.SquashSeq)) {
         auto index = LSQModule.getIndexBySeq(microSeq);
         if (index >= 0) {
-          auto plan =
-              LSQModule.planDataForward(index, StoreValueRSModule.StoreValueRS[i].vrs2);
+          auto plan = LSQModule.planDataForward(
+              index, StoreValueRSModule.StoreValueRS[i].vrs2);
           if (debug::enabled(debug::TOPIC_LSQ))
             debug::print("LSQ store value seq=%llu -> LSQ[%d] = %d\n",
                          static_cast<unsigned long long>(microSeq), index,
                          StoreValueRSModule.StoreValueRS[i].vrs2);
-          CPUstate.LSQModule.writeValue(StoreValueRSModule.StoreValueRS[i].vrs2, index);
+          CPUstate.LSQModule.writeValue(StoreValueRSModule.StoreValueRS[i].vrs2,
+                                        index);
           CPUstate.LSQModule.applyStoreToLoadForward(plan);
         }
         CPUstate.StoreValueRSModule.StoreValueRS[i].free = true;
@@ -774,11 +786,13 @@ void CPU::execute() {
 
 void CPU::CDBBroadcast(int robIndex, int value) {
   for (int i = 0; i < INTEGERRS_CAP; i++) {
-    if (!IntegerRSModule.IntegerRS[i].free && IntegerRSModule.IntegerRS[i].qj == robIndex) {
+    if (!IntegerRSModule.IntegerRS[i].free &&
+        IntegerRSModule.IntegerRS[i].qj == robIndex) {
       CPUstate.IntegerRSModule.IntegerRS[i].vj = value;
       CPUstate.IntegerRSModule.IntegerRS[i].qj = -1;
     }
-    if (!IntegerRSModule.IntegerRS[i].free && IntegerRSModule.IntegerRS[i].qk == robIndex) {
+    if (!IntegerRSModule.IntegerRS[i].free &&
+        IntegerRSModule.IntegerRS[i].qk == robIndex) {
       CPUstate.IntegerRSModule.IntegerRS[i].vk = value;
       CPUstate.IntegerRSModule.IntegerRS[i].qk = -1;
     }
@@ -794,7 +808,8 @@ void CPU::CDBBroadcast(int robIndex, int value) {
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
-    if (!StoreAddressRSModule.StoreAddressRS[i].free && StoreAddressRSModule.StoreAddressRS[i].qj == robIndex) {
+    if (!StoreAddressRSModule.StoreAddressRS[i].free &&
+        StoreAddressRSModule.StoreAddressRS[i].qj == robIndex) {
       CPUstate.StoreAddressRSModule.StoreAddressRS[i].vj = value;
       CPUstate.StoreAddressRSModule.StoreAddressRS[i].qj = -1;
     }
@@ -807,11 +822,13 @@ void CPU::CDBBroadcast(int robIndex, int value) {
     }
   }
   for (int i = 0; i < BRANCHRS_CAP; i++) {
-    if (!BranchRSModule.BranchRS[i].free && BranchRSModule.BranchRS[i].qj == robIndex) {
+    if (!BranchRSModule.BranchRS[i].free &&
+        BranchRSModule.BranchRS[i].qj == robIndex) {
       CPUstate.BranchRSModule.BranchRS[i].vj = value;
       CPUstate.BranchRSModule.BranchRS[i].qj = -1;
     }
-    if (!BranchRSModule.BranchRS[i].free && BranchRSModule.BranchRS[i].qk == robIndex) {
+    if (!BranchRSModule.BranchRS[i].free &&
+        BranchRSModule.BranchRS[i].qk == robIndex) {
       CPUstate.BranchRSModule.BranchRS[i].vk = value;
       CPUstate.BranchRSModule.BranchRS[i].qk = -1;
     }
@@ -820,8 +837,8 @@ void CPU::CDBBroadcast(int robIndex, int value) {
 
 CDBBypassResult CPU::CDBBypass(int robIndex) const {
   CDBBypassResult out;
-  if (cdbArbiter.valid && !cdbArbiter.result.isAddress &&
-      !cdbArbiter.result.isControl && cdbArbiter.result.robIndex == robIndex) {
+  if (cdbArbiter.valid && !cdbArbiter.result.isControl &&
+      cdbArbiter.result.robIndex == robIndex) {
     out.valid = true;
     out.value = cdbArbiter.result.value;
   }
@@ -829,6 +846,7 @@ CDBBypassResult CPU::CDBBypass(int robIndex) const {
 }
 
 void CPU::writeBack() {
+  // DMEM write back to the Load 
   if (DataMem.isReady()) {
     auto reply = DataMem.MemReturn();
     if (reply.op == Operation::Load &&
@@ -843,6 +861,7 @@ void CPU::writeBack() {
     }
     CPUstate.DataMem.MemPull();
   }
+  // BRU write back: if predicted wrong, send the flush signal
   SquashInfo BranchSquash;
   if (!BRUModule.isEmpty()) {
     int index = BRUModule.headRobIndex();
@@ -855,27 +874,46 @@ void CPU::writeBack() {
         ++branchCorrect;
       }
     }
-    if (index >= 0 && (!squashDetect.needSquash ||
-                       (squashDetect.needSquash &&
-                        brRobSeq < squashDetect.SquashSeq))) {
+    if (index >= 0 &&
+        (!squashDetect.needSquash ||
+         (squashDetect.needSquash && brRobSeq < squashDetect.SquashSeq))) {
       auto actualPC = pcResult;
       auto taken = actualPC != pcFrom + 4;
       if (actualPC != ROBModule.getPredictedPC(index)) {
         if (debug::enabled(debug::TOPIC_BRANCH))
           debug::print("squash seq=%llu pc=%u (from %u)\n",
-                       static_cast<unsigned long long>(brRobSeq),
-                       actualPC, pcFrom);
+                       static_cast<unsigned long long>(brRobSeq), actualPC,
+                       pcFrom);
         BranchSquash.needSquash = true;
         BranchSquash.SquashPC = actualPC;
         BranchSquash.SquashIndex = index;
         BranchSquash.SquashSeq = brRobSeq;
       }
-      CPUstate.BPModule.update(pcFrom, taken,
-                               pcResult,
+      CPUstate.BPModule.update(pcFrom, taken, pcResult,
                                ROBModule.getRASCkpt(index).GHR_snapshot);
       CPUstate.ROBModule.setROBCommitReady(index);
     }
     CPUstate.BRUModule.remove(brRobSeq);
+  }
+
+  // AGU writeBack: address result -> LSQ directly
+  if (!AGUModule.isEmpty()) {
+    auto aguRobSeq = AGUModule.headRobSeq();
+    if (!squashDetect.needSquash ||
+        (squashDetect.needSquash && aguRobSeq < squashDetect.SquashSeq)) {
+      auto index = LSQModule.getIndexBySeq(aguRobSeq);
+      if (index >= 0) {
+        auto value = AGUModule.headValue();
+        auto plan = LSQModule.planAddressForward(index, value);
+        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), index);
+        CPUstate.LSQModule.applyStoreToLoadForward(plan);
+        if (debug::enabled(debug::TOPIC_LSQ))
+          debug::print("AGU addr seq=%llu -> LSQ[%d] = %u\n",
+                       static_cast<unsigned long long>(aguRobSeq), index,
+                       static_cast<uint32_t>(value));
+      }
+    }
+    CPUstate.AGUModule.remove(aguRobSeq);
   }
 
   CDBOutput cdbOut = cdbArbiter;
@@ -897,15 +935,9 @@ void CPU::writeBack() {
   }
   auto robIndex = cdbOut.result.robIndex;
   auto robSeq = cdbOut.result.robSeq;
-  auto isAddress = cdbOut.result.isAddress;
   auto isControl = cdbOut.result.isControl;
-  if (debug::enabled(debug::TOPIC_WB))
-    debug::print("CDB seq=%llu idx=%d val=%d addr=%d ctrl=%d alu=%d lsq=%d\n",
-                 static_cast<unsigned long long>(robSeq), robIndex,
-                 cdbOut.result.value, isAddress, isControl, cdbOut.aluGranted,
-                 cdbOut.lsqGranted);
   SquashInfo JumpSquash;
-  if (!isAddress && !isControl) {
+  if (!isControl) {
     auto value = cdbOut.result.value;
     CDBBroadcast(robIndex, value);
     if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
@@ -917,14 +949,6 @@ void CPU::writeBack() {
       auto lsqIndex = LSQModule.getIndexBySeq(robSeq);
       if (lsqIndex >= 0)
         CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
-    }
-  } else if (isAddress) {
-    auto value = cdbOut.result.value;
-    auto index = LSQModule.getIndexBySeq(robSeq);
-    if (index >= 0) {
-      auto plan = LSQModule.planAddressForward(index, value);
-      CPUstate.LSQModule.writeAddress(value, index);
-      CPUstate.LSQModule.applyStoreToLoadForward(plan);
     }
   } else if (isControl) {
     if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
@@ -1043,8 +1067,7 @@ void CPU::flush() {
     // 3. clear the wrong RAT
     if (squashDetect.SquashIndex >= 0) {
       RATSnapshot snap;
-      memcpy(snap.RAT_snapshot,
-             ROBModule.getRATCkpt(squashDetect.SquashIndex),
+      memcpy(snap.RAT_snapshot, ROBModule.getRATCkpt(squashDetect.SquashIndex),
              sizeof(snap.RAT_snapshot));
       const uint64_t ckptHead = ROBModule.headSeq();
       const uint64_t ckptSeq = squashDetect.SquashSeq;
@@ -1061,11 +1084,13 @@ void CPU::flush() {
     }
     // 4. clear the wrong ALU outputBuffer
     CPUstate.ALUModule.flush(squashDetect.SquashSeq);
-    // 5. clear the wrong BRU outputBuffer
+    // 5. clear the wrong AGU outputBuffer
+    CPUstate.AGUModule.flush(squashDetect.SquashSeq);
+    // 6. clear the wrong BRU outputBuffer
     CPUstate.BRUModule.flush(squashDetect.SquashSeq);
-    // 6. clear the old flushArbiter elements
+    // 7. clear the old flushArbiter elements
     CPUstate.flushArbiter.clear(squashDetect.SquashSeq);
-    // 7. clear the wrong RAS
+    // 8. clear the wrong RAS
     auto index = squashDetect.SquashIndex;
     if (index >= 0) {
       CPUstate.BPModule.recoverCheckPoint(ROBModule.getRASCkpt(index));
@@ -1073,8 +1098,7 @@ void CPU::flush() {
   }
 }
 void CPU::read() {
-  memcpy(&IntegerRSModule, &CPUstate.IntegerRSModule,
-         sizeof(IntegerRSModule));
+  memcpy(&IntegerRSModule, &CPUstate.IntegerRSModule, sizeof(IntegerRSModule));
   memcpy(&StoreAddressRSModule, &CPUstate.StoreAddressRSModule,
          sizeof(StoreAddressRSModule));
   memcpy(&StoreValueRSModule, &CPUstate.StoreValueRSModule,
@@ -1084,6 +1108,7 @@ void CPU::read() {
   memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
   memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
   memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
+  memcpy(&AGUModule, &CPUstate.AGUModule, sizeof(AGUModule));
   memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
   memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
   memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));

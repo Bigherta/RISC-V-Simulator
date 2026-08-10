@@ -14,6 +14,7 @@ struct INQEntry {
 };
 
 class INQ {
+  friend struct ReorderTester;
 private:
   INQEntry INQqueue[INQ_CAP];
   uint8_t head = 0;

@@ -34,6 +34,7 @@ struct LSQStoreToLoadForwardPlan {
 };
 
 class LSQ {
+  friend struct ReorderTester;
 private:
   LSQEntry LSQqueue[LSQ_CAP];
   uint8_t head = 0;

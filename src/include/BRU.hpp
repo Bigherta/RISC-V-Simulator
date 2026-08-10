@@ -4,6 +4,7 @@
 #define BRU_HPP
 #include "common.hpp"
 class BRU {
+  friend struct ReorderTester;
 private:
   BranchResult outputBuffer[BRU_CAP];
   bool slotValid[BRU_CAP] = {};

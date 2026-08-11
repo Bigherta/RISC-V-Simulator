@@ -42,8 +42,8 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── ROB.hpp                # 重排序缓冲
 │   │   ├── RS.hpp                 # 保留站（Integer / Load / Store / MicroStore / Branch）
 │   │   └── util.hpp               # 调试宏（VERBOSE 主题开关）
-│   ├── ALU/  BRU/  BranchPredictor/  Decoder/  INQ/  LSQ/  Memory/
-│   └── Register/  ROB/
+│   ├── ALU/  AGU/  BRU/  BranchPredictor/  Decoder/  INQ/  LSQ/  Memory/
+│   └── PRF/  Register/  ROB/
 ├── data/                          # 测试数据
 │   ├── sample/                    # 示例程序
 │   ├── testcases/                 # 18 个官方测试点（.c 源码 + .data 机器码 + .dump 反汇编）
@@ -213,7 +213,7 @@ Tournament 混合预测器：
 | manyarguments | 40 | 108 | 11/21 | 52.38% | 0.04s | OK |
 | multiarray | 115 | 1,983 | 215/279 | 77.06% | 0.05s | OK |
 | naive | 94 | 57 | 0/4 | 0.00% | 0.03s | OK |
-| pi | 137 | 138,247,156 | 36,095,373/43,323,217 | 83.32% | 560.64s | OK |
+| pi | 137 | 138,247,156 | 36,095,373/43,323,217 | 83.32% | 572.51s | OK |
 | qsort | 105 | 1,300,862 | 263,663/270,991 | 97.30% | 4.51s | OK |
 | queens | 171 | 902,377 | 86,304/105,640 | 81.70% | 3.31s | OK |
 | statement_test | 50 | 1,551 | 181/294 | 61.56% | 0.04s | OK |

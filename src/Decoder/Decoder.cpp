@@ -86,5 +86,8 @@ Instruct Decoder::decode(int32_t raw_inst) {
     inst.type = RISC_V::RV_INVALID;
     break;
   }
+  if (inst.type != RISC_V::S && inst.type != RISC_V::B && inst.rd != 0) {
+    inst.allocDest = true;
+  }
   return inst;
 }

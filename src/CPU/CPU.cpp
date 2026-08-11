@@ -63,10 +63,10 @@ void CPU::decode() {
   }
 }
 
-IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
+int CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
                                  bool isControl) {
   if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
-    return {false, inst.rd, -1};
+    return -1;
   }
   ReservationStation IntegerRS{};
   IntegerRS.free = false;
@@ -78,14 +78,14 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   if (op1.ready) {
     IntegerRS.vj = op1.value;
   } else {
-    if (ROBModule.isValueValidAt(op1.robIndex)) {
-      IntegerRS.vj = ROBModule.getValue(op1.robIndex);
+    if (PRFModule.isReady(op1.phyRegIndex)) {
+      IntegerRS.vj = PRFModule.getValue(op1.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op1.robIndex);
+      auto bypass = CDBBypass(op1.phyRegIndex);
       if (bypass.valid) {
         IntegerRS.vj = bypass.value;
       } else {
-        IntegerRS.qj = op1.robIndex;
+        IntegerRS.qj = op1.phyRegIndex;
       }
     }
   }
@@ -96,33 +96,50 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
     if (op2.ready) {
       IntegerRS.vk = op2.value;
     } else {
-      if (ROBModule.isValueValidAt(op2.robIndex)) {
-        IntegerRS.vk = ROBModule.getValue(op2.robIndex);
+      if (PRFModule.isReady(op2.phyRegIndex)) {
+        IntegerRS.vk = PRFModule.getValue(op2.phyRegIndex);
       } else {
-        auto bypass = CDBBypass(op2.robIndex);
+        auto bypass = CDBBypass(op2.phyRegIndex);
         if (bypass.valid) {
           IntegerRS.vk = bypass.value;
         } else {
-          IntegerRS.qk = op2.robIndex;
+          IntegerRS.qk = op2.phyRegIndex;
         }
       }
     }
   }
-
+  int Physical_regNum = -1;
+  if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
+    Physical_regNum = CPUstate.PRFModule.pop();
+    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+  }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
   newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
+  newROB.oldPhy =
+      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.newPhy = Physical_regNum;
+  if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
+    debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
+                 Physical_regNum, newROB.oldPhy);
   if (isControl) {
-    newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
-    newROB.isValueValid = true;
-    newROB.ras_ckpt = INQModule.headRASCkpt();
-    auto ratSnap = REGModule.snapshotRAT();
-    memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
-    if (destination != 0)
-      newROB.rat_ckpt[destination] = ROBModule.getTail();
+    newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+    auto prfSnap = REGModule.snapshotRAT_PRF();
+    memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
+           sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
+    if (inst.allocDest)
+      newROB.ckpt.RATsnapshot.RAT_snapshot[destination] = Physical_regNum;
+    newROB.ckpt.flHeadSeqCkpt =
+        PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
+    if (Physical_regNum >= 0) {
+      CPUstate.PRFModule.write(Physical_regNum, inst.pc + 4);
+      if (debug::enabled(debug::TOPIC_PRF))
+        debug::print("PRF link P%d = %d (pc+4)\n", Physical_regNum,
+                     inst.pc + 4);
+    }
   }
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
@@ -132,12 +149,12 @@ IssueResult CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
       break;
     }
   }
-  return {destination != 0, destination, robIndex};
+  return robIndex;
 }
 
-IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
+int CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
-    return {false, inst.rd, -1};
+    return -1;
   }
   ReservationStation IntegerRS{};
   IntegerRS.free = false;
@@ -147,20 +164,38 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
     IntegerRS.vj = inst.pc;
   }
   IntegerRS.vk = inst.imm;
+  int Physical_regNum = -1;
+  if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
+    Physical_regNum = CPUstate.PRFModule.pop();
+    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+  }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
   newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
+  newROB.oldPhy =
+      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.newPhy = Physical_regNum;
+  if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
+    debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
+                 Physical_regNum, newROB.oldPhy);
   if (isControl) {
-    newROB.value = inst.pc + 4;
     newROB.type = ROBType::LINK;
-    newROB.isValueValid = true;
-    newROB.ras_ckpt = INQModule.headRASCkpt();
-    auto ratSnap = REGModule.snapshotRAT();
-    memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
-    if (destination != 0)
-      newROB.rat_ckpt[destination] = ROBModule.getTail();
+    newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+    auto prfSnap = REGModule.snapshotRAT_PRF();
+    memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
+           sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
+    if (inst.allocDest)
+      newROB.ckpt.RATsnapshot.RAT_snapshot[destination] = Physical_regNum;
+    newROB.ckpt.flHeadSeqCkpt =
+        PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
+    if (Physical_regNum >= 0) {
+      CPUstate.PRFModule.write(Physical_regNum, inst.pc + 4);
+      if (debug::enabled(debug::TOPIC_PRF))
+        debug::print("PRF link P%d = %d (pc+4)\n", Physical_regNum,
+                     inst.pc + 4);
+    }
   }
   int robIndex = CPUstate.ROBModule.push(newROB);
   IntegerRS.robIndex = robIndex;
@@ -170,12 +205,12 @@ IssueResult CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
       break;
     }
   }
-  return {destination != 0, destination, robIndex};
+  return robIndex;
 }
 
-IssueResult CPU::issue_B(Instruct inst) {
+int CPU::issue_B(Instruct inst) {
   if (BranchRSModule.isBranchRSFull() || ROBModule.isFull()) {
-    return {false, inst.rd, -1};
+    return -1;
   }
   BranchReservationStation BranchRS{};
   BranchRS.free = false;
@@ -188,14 +223,14 @@ IssueResult CPU::issue_B(Instruct inst) {
   if (op1.ready) {
     BranchRS.vj = op1.value;
   } else {
-    if (ROBModule.isValueValidAt(op1.robIndex)) {
-      BranchRS.vj = ROBModule.getValue(op1.robIndex);
+    if (PRFModule.isReady(op1.phyRegIndex)) {
+      BranchRS.vj = PRFModule.getValue(op1.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op1.robIndex);
+      auto bypass = CDBBypass(op1.phyRegIndex);
       if (bypass.valid) {
         BranchRS.vj = bypass.value;
       } else {
-        BranchRS.qj = op1.robIndex;
+        BranchRS.qj = op1.phyRegIndex;
       }
     }
   }
@@ -203,14 +238,14 @@ IssueResult CPU::issue_B(Instruct inst) {
   if (op2.ready) {
     BranchRS.vk = op2.value;
   } else {
-    if (ROBModule.isValueValidAt(op2.robIndex)) {
-      BranchRS.vk = ROBModule.getValue(op2.robIndex);
+    if (PRFModule.isReady(op2.phyRegIndex)) {
+      BranchRS.vk = PRFModule.getValue(op2.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op2.robIndex);
+      auto bypass = CDBBypass(op2.phyRegIndex);
       if (bypass.valid) {
         BranchRS.vk = bypass.value;
       } else {
-        BranchRS.qk = op2.robIndex;
+        BranchRS.qk = op2.phyRegIndex;
       }
     }
   }
@@ -218,9 +253,11 @@ IssueResult CPU::issue_B(Instruct inst) {
   newROB.pc = inst.pc;
   newROB.predictedPC = INQModule.headPredictedPC();
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.ras_ckpt = INQModule.headRASCkpt();
-  auto ratSnap = REGModule.snapshotRAT();
-  memcpy(newROB.rat_ckpt, ratSnap.RAT_snapshot, sizeof(newROB.rat_ckpt));
+  newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+  auto prfSnap = REGModule.snapshotRAT_PRF();
+  memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
+         sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
+  newROB.ckpt.flHeadSeqCkpt = PRFModule.getHeadSeq();
   int robIndex = CPUstate.ROBModule.push(newROB);
   BranchRS.robIndex = robIndex;
   for (int i = 0; i < BRANCHRS_CAP; i++) {
@@ -229,12 +266,12 @@ IssueResult CPU::issue_B(Instruct inst) {
       break;
     }
   }
-  return {false, 0, robIndex};
+  return robIndex;
 }
 
-IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
+int CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   if (LoadRSModule.isLoadRSFull() || ROBModule.isFull() || LSQModule.isFull()) {
-    return {false, inst.rd, -1};
+    return -1;
   }
   ReservationStation LoadRS{};
   LoadRS.free = false;
@@ -246,21 +283,31 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   if (op1.ready) {
     LoadRS.vj = op1.value;
   } else {
-    if (ROBModule.isValueValidAt(op1.robIndex)) {
-      LoadRS.vj = ROBModule.getValue(op1.robIndex);
+    if (PRFModule.isReady(op1.phyRegIndex)) {
+      LoadRS.vj = PRFModule.getValue(op1.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op1.robIndex);
+      auto bypass = CDBBypass(op1.phyRegIndex);
       if (bypass.valid) {
         LoadRS.vj = bypass.value;
       } else {
-        LoadRS.qj = op1.robIndex;
+        LoadRS.qj = op1.phyRegIndex;
       }
     }
   }
   LoadRS.vk = inst.imm;
-
+  int Physical_regNum = -1;
+  if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
+    Physical_regNum = CPUstate.PRFModule.pop();
+    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+  }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
+  newROB.oldPhy =
+      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.newPhy = Physical_regNum;
+  if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
+    debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
+                 Physical_regNum, newROB.oldPhy);
   int robIndex = CPUstate.ROBModule.push(newROB);
   LoadRS.robIndex = robIndex;
   CPUstate.LSQModule.pushLoad(robIndex, CPUstate.ROBModule.getSeq(robIndex),
@@ -271,15 +318,15 @@ IssueResult CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
       break;
     }
   }
-  return {destination != 0, destination, robIndex};
+  return robIndex;
 }
 
-IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
+int CPU::issue_Store(Instruct inst, int n_bytes) {
 
   if (StoreAddressRSModule.isStoreAddressRSFull() ||
       StoreValueRSModule.isStoreValueRSFull() || ROBModule.isFull() ||
       LSQModule.isFull()) {
-    return {false, 0, -1};
+    return -1;
   }
   ReservationStation StoreRS{};
   StoreRS.free = false;
@@ -291,14 +338,14 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   if (op1.ready) {
     StoreRS.vj = op1.value;
   } else {
-    if (ROBModule.isValueValidAt(op1.robIndex)) {
-      StoreRS.vj = ROBModule.getValue(op1.robIndex);
+    if (PRFModule.isReady(op1.phyRegIndex)) {
+      StoreRS.vj = PRFModule.getValue(op1.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op1.robIndex);
+      auto bypass = CDBBypass(op1.phyRegIndex);
       if (bypass.valid) {
         StoreRS.vj = bypass.value;
       } else {
-        StoreRS.qj = op1.robIndex;
+        StoreRS.qj = op1.phyRegIndex;
       }
     }
   }
@@ -310,14 +357,14 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
   if (op2.ready) {
     MicroRS.vrs2 = op2.value;
   } else {
-    if (ROBModule.isValueValidAt(op2.robIndex)) {
-      MicroRS.vrs2 = ROBModule.getValue(op2.robIndex);
+    if (PRFModule.isReady(op2.phyRegIndex)) {
+      MicroRS.vrs2 = PRFModule.getValue(op2.phyRegIndex);
     } else {
-      auto bypass = CDBBypass(op2.robIndex);
+      auto bypass = CDBBypass(op2.phyRegIndex);
       if (bypass.valid) {
         MicroRS.vrs2 = bypass.value;
       } else {
-        MicroRS.qrs2 = op2.robIndex;
+        MicroRS.qrs2 = op2.phyRegIndex;
       }
     }
   }
@@ -340,22 +387,12 @@ IssueResult CPU::issue_Store(Instruct inst, int n_bytes) {
       break;
     }
   }
-  return {false, 0, robIndex};
+  return robIndex;
 }
 
 void CPU::issue() {
   if (!squashDetect.needSquash) {
-    RATWritePort commitPort{};
-    if (!ROBModule.isEmpty() && ROBModule.isHeadCommitReady()) {
-      auto rob_entry = ROBModule.peek();
-      if ((rob_entry.type == ROBType::REGISTER ||
-           rob_entry.type == ROBType::LINK) &&
-          REGModule.readRAT(rob_entry.dest) == ROBModule.getHead()) {
-        commitPort = {true, (uint32_t)rob_entry.dest, -1};
-      }
-    }
-
-    IssueResult res{false, 0, -1};
+    int res = -1;
     if (!INQModule.isEmpty() && INQModule.headDecoded()) {
       Instruct inst = INQModule.headNinst();
       switch (inst.type) {
@@ -371,7 +408,7 @@ void CPU::issue() {
             newROB.halt = true;
             newROB.isCommitReady = true;
             int haltIndex = CPUstate.ROBModule.push(newROB);
-            res = {false, inst.rd, haltIndex};
+            res = haltIndex;
           } else {
             res = issue_IntegerRS(inst, false, true, false);
           }
@@ -448,21 +485,13 @@ void CPU::issue() {
       }
       case RISC_V::RV_INVALID: {
         CPUstate.INQModule.pop();
-        res = {false, 0, -1};
+        res = -1;
         break;
       }
       }
     }
-    if (res.robIndex != -1)
+    if (res != -1)
       CPUstate.INQModule.pop();
-
-    RATWritePort issuePort{res.valid, (uint32_t)res.rd, res.robIndex};
-
-    auto ports = RATSEL::RATWrite(issuePort, commitPort);
-    if (ports.first.valid)
-      CPUstate.REGModule.setRAT(ports.first.reg, ports.first.value);
-    if (ports.second.valid)
-      CPUstate.REGModule.setRAT(ports.second.reg, ports.second.value);
   }
 }
 
@@ -776,8 +805,14 @@ void CPU::execute() {
             debug::print("LSQ ready seq=%llu -> ROB[%d] = %d\n",
                          static_cast<unsigned long long>(lsqSeq), lsqRobIndex,
                          LSQModule.getValue(i));
-          CPUstate.ROBModule.writeROBValue(LSQModule.getValue(i), lsqRobIndex);
           CPUstate.ROBModule.setROBCommitReady(lsqRobIndex);
+          int newPhy = ROBModule.getNewPhy(lsqRobIndex);
+          if (newPhy >= 0) {
+            CPUstate.PRFModule.write(newPhy, LSQModule.getValue(i));
+            if (debug::enabled(debug::TOPIC_PRF))
+              debug::print("PRF write P%d = %d (lsq)\n", newPhy,
+                           LSQModule.getValue(i));
+          }
         }
       }
     }
@@ -785,60 +820,63 @@ void CPU::execute() {
 }
 
 void CPU::CDBBroadcast(int robIndex, int value) {
+  int phy = ROBModule.getNewPhy(robIndex);
+  if (phy < 0)
+    return; // no dest register: nothing to broadcast
   for (int i = 0; i < INTEGERRS_CAP; i++) {
     if (!IntegerRSModule.IntegerRS[i].free &&
-        IntegerRSModule.IntegerRS[i].qj == robIndex) {
+        IntegerRSModule.IntegerRS[i].qj == phy) {
       CPUstate.IntegerRSModule.IntegerRS[i].vj = value;
       CPUstate.IntegerRSModule.IntegerRS[i].qj = -1;
     }
     if (!IntegerRSModule.IntegerRS[i].free &&
-        IntegerRSModule.IntegerRS[i].qk == robIndex) {
+        IntegerRSModule.IntegerRS[i].qk == phy) {
       CPUstate.IntegerRSModule.IntegerRS[i].vk = value;
       CPUstate.IntegerRSModule.IntegerRS[i].qk = -1;
     }
   }
   for (int i = 0; i < LOADRS_CAP; i++) {
-    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qj == robIndex) {
+    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qj == phy) {
       CPUstate.LoadRSModule.LoadRS[i].vj = value;
       CPUstate.LoadRSModule.LoadRS[i].qj = -1;
     }
-    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qk == robIndex) {
+    if (!LoadRSModule.LoadRS[i].free && LoadRSModule.LoadRS[i].qk == phy) {
       CPUstate.LoadRSModule.LoadRS[i].vk = value;
       CPUstate.LoadRSModule.LoadRS[i].qk = -1;
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
     if (!StoreAddressRSModule.StoreAddressRS[i].free &&
-        StoreAddressRSModule.StoreAddressRS[i].qj == robIndex) {
+        StoreAddressRSModule.StoreAddressRS[i].qj == phy) {
       CPUstate.StoreAddressRSModule.StoreAddressRS[i].vj = value;
       CPUstate.StoreAddressRSModule.StoreAddressRS[i].qj = -1;
     }
   }
   for (int i = 0; i < STORERS_CAP; i++) {
     if (!StoreValueRSModule.StoreValueRS[i].free &&
-        StoreValueRSModule.StoreValueRS[i].qrs2 == robIndex) {
+        StoreValueRSModule.StoreValueRS[i].qrs2 == phy) {
       CPUstate.StoreValueRSModule.StoreValueRS[i].vrs2 = value;
       CPUstate.StoreValueRSModule.StoreValueRS[i].qrs2 = -1;
     }
   }
   for (int i = 0; i < BRANCHRS_CAP; i++) {
     if (!BranchRSModule.BranchRS[i].free &&
-        BranchRSModule.BranchRS[i].qj == robIndex) {
+        BranchRSModule.BranchRS[i].qj == phy) {
       CPUstate.BranchRSModule.BranchRS[i].vj = value;
       CPUstate.BranchRSModule.BranchRS[i].qj = -1;
     }
     if (!BranchRSModule.BranchRS[i].free &&
-        BranchRSModule.BranchRS[i].qk == robIndex) {
+        BranchRSModule.BranchRS[i].qk == phy) {
       CPUstate.BranchRSModule.BranchRS[i].vk = value;
       CPUstate.BranchRSModule.BranchRS[i].qk = -1;
     }
   }
 }
 
-CDBBypassResult CPU::CDBBypass(int robIndex) const {
+CDBBypassResult CPU::CDBBypass(int phy) const {
   CDBBypassResult out;
   if (cdbArbiter.valid && !cdbArbiter.result.isControl &&
-      cdbArbiter.result.robIndex == robIndex) {
+      ROBModule.getNewPhy(cdbArbiter.result.robIndex) == phy) {
     out.valid = true;
     out.value = cdbArbiter.result.value;
   }
@@ -846,7 +884,7 @@ CDBBypassResult CPU::CDBBypass(int robIndex) const {
 }
 
 void CPU::writeBack() {
-  // DMEM write back to the Load 
+  // DMEM write back to the Load
   if (DataMem.isReady()) {
     auto reply = DataMem.MemReturn();
     if (reply.op == Operation::Load &&
@@ -942,18 +980,26 @@ void CPU::writeBack() {
     CDBBroadcast(robIndex, value);
     if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
       CPUstate.ROBModule.setROBCommitReady(robIndex);
-      CPUstate.ROBModule.setROBValueValid(robIndex);
-      CPUstate.ROBModule.writeROBValue(value, robIndex);
     }
     if (cdbOut.lsqGranted) {
       auto lsqIndex = LSQModule.getIndexBySeq(robSeq);
       if (lsqIndex >= 0)
         CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
     }
+    int newPhy = ROBModule.getNewPhy(robIndex);
+    if (newPhy >= 0) {
+      CPUstate.PRFModule.write(newPhy, value);
+      if (debug::enabled(debug::TOPIC_PRF)) {
+        debug::print("PRF write P%d = %d (alu)\n", newPhy, value);
+        if (PRFModule.isReady(newPhy) && PRFModule.getValue(newPhy) != value)
+          debug::print("PRF mismatch P%d: rob=%d prf=%d\n", newPhy, value,
+                       PRFModule.getValue(newPhy));
+      }
+    }
   } else if (isControl) {
     if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
       const auto pc = static_cast<uint32_t>(cdbOut.result.value);
-      const auto value = ROBModule.getValue(robIndex);
+      const auto value = PRFModule.getValue(ROBModule.getNewPhy(robIndex));
 
       CDBBroadcast(robIndex, value);
       ++branchTotal;
@@ -973,8 +1019,6 @@ void CPU::writeBack() {
         JumpSquash.SquashSeq = robSeq;
       }
       CPUstate.ROBModule.setROBCommitReady(robIndex);
-      CPUstate.ROBModule.setROBValueValid(robIndex);
-      CPUstate.ROBModule.writeROBValue(value, robIndex);
     }
   }
   if (BranchSquash.needSquash && JumpSquash.needSquash) {
@@ -1001,6 +1045,7 @@ void CPU::commit() {
   }
   if (ROBModule.isEmpty() || !ROBModule.isHeadCommitReady())
     return;
+  int headIdx = ROBModule.getHead();
   auto rob_entry = ROBModule.peek();
   rob_entry = CPUstate.ROBModule.pop();
   if (rob_entry.halt) {
@@ -1008,11 +1053,16 @@ void CPU::commit() {
     CPUstate.haltRd = rob_entry.dest;
   } else if (rob_entry.type == ROBType::REGISTER ||
              rob_entry.type == ROBType::LINK) {
+    int newPhy = ROBModule.getNewPhy(headIdx);
+    int oldPhy = ROBModule.getOldPhy(headIdx);
+    auto value = PRFModule.getValue(newPhy);
     if (debug::enabled(debug::TOPIC_COMMIT))
       debug::print("commit seq=%llu dest=%d val=%d\n",
                    static_cast<unsigned long long>(rob_entry.seq),
-                   rob_entry.dest, rob_entry.value);
-    CPUstate.REGModule.writeReg(rob_entry.dest, rob_entry.value);
+                   rob_entry.dest, value);
+    CPUstate.REGModule.writeReg(rob_entry.dest, value);
+    if (oldPhy >= 0)
+      CPUstate.PRFModule.push(oldPhy);
   }
 }
 void CPU::flush() {
@@ -1064,23 +1114,14 @@ void CPU::flush() {
     // 2. clear the wrong LSQ
     CPUstate.LSQModule.flush(
         ROBModule.getLsqTailSnapshot(squashDetect.SquashIndex));
-    // 3. clear the wrong RAT
+    // 3. clear the wrong RAT_PRF 
+    // only modified by the issue instructions after the control inst
     if (squashDetect.SquashIndex >= 0) {
-      RATSnapshot snap;
-      memcpy(snap.RAT_snapshot, ROBModule.getRATCkpt(squashDetect.SquashIndex),
-             sizeof(snap.RAT_snapshot));
-      const uint64_t ckptHead = ROBModule.headSeq();
-      const uint64_t ckptSeq = squashDetect.SquashSeq;
-      for (int regNum = 0; regNum < REGISTER_CAP; ++regNum) {
-        const int idx = snap.RAT_snapshot[regNum];
-        if (idx == -1)
-          continue;
-        const uint64_t s = ROBModule.getSeq(idx);
-        if (s < ckptHead || s > ckptSeq) {
-          snap.RAT_snapshot[regNum] = -1;
-        }
-      }
-      CPUstate.REGModule.restoreRAT(snap);
+      RATSnapshot snapP;
+      memcpy(snapP.RAT_snapshot,
+             ROBModule.getRATPrfCkpt(squashDetect.SquashIndex),
+             sizeof(snapP.RAT_snapshot));
+      CPUstate.REGModule.restoreRAT_PRF(snapP);
     }
     // 4. clear the wrong ALU outputBuffer
     CPUstate.ALUModule.flush(squashDetect.SquashSeq);
@@ -1094,6 +1135,11 @@ void CPU::flush() {
     auto index = squashDetect.SquashIndex;
     if (index >= 0) {
       CPUstate.BPModule.recoverCheckPoint(ROBModule.getRASCkpt(index));
+    }
+    // 9. clear the wrong PRF free list
+    if (index >= 0) {
+      auto ckptHead = ROBModule.getFlHeadSeqCkpt(index);
+      CPUstate.PRFModule.restoreHead(ckptHead);
     }
   }
 }
@@ -1112,16 +1158,43 @@ void CPU::read() {
   memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
   memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
   memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));
+  memcpy(&PRFModule, &CPUstate.PRFModule, sizeof(PRFModule));
   memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
+  memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
   DataMem.snapshotFrom(CPUstate.DataMem);
   programCounter = CPUstate.programCounter;
   haltFetched = CPUstate.haltFetched;
   haltCommitted = CPUstate.haltCommitted;
   haltRd = CPUstate.haltRd;
-  memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
   squashDetect = CPUstate.flushArbiter.arbitResult();
   cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
 }
+
+bool CPU::checkPRFInvariant() const {
+  
+  uint32_t bitmap[PRF_CAP / 32] = {};
+  uint32_t count = 0;
+  auto mark = [&](int phy) {
+    assert(phy >= 0 && phy < PRF_CAP);
+    assert(!((bitmap[phy >> 5] >> (phy & 31)) & 1u));
+    bitmap[phy >> 5] |= 1u << (phy & 31);
+    ++count;
+  };
+  mark(0);
+  for (uint32_t s = CPUstate.PRFModule.getHeadSeq();
+       s != CPUstate.PRFModule.getTailSeq(); ++s)
+    mark(CPUstate.PRFModule.getFreeListSlot(s));
+  for (int r = 1; r < REGISTER_CAP; ++r)
+    mark(CPUstate.REGModule.readRAT_PRF(r));
+  for (int i = CPUstate.ROBModule.getHead(); i != CPUstate.ROBModule.getTail();
+       i = (i + 1) & (ROB_CAP - 1)) {
+    int old = CPUstate.ROBModule.getOldPhy(i);
+    if (old >= 0)
+      mark(old);
+  }
+  return count == PRF_CAP;
+}
+
 void CPU::run() {
   bool finish = false;
   uint64_t clock = 0;
@@ -1135,6 +1208,7 @@ void CPU::run() {
     flush();
     decode();
     CPUstate.REGModule.resetX0();
+    assert(checkPRFInvariant());
     ++clock;
     finish = haltCommitted && INQModule.isEmpty() && ROBModule.isEmpty();
   }

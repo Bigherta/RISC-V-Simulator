@@ -16,6 +16,7 @@ set(CPU_SOURCES
     src/Register/Register.cpp
     src/INQ/INQ.cpp
     src/BranchPredictor/BranchPredictor.cpp
+    src/PRF/PRF.cpp
 )
 
 add_executable(code

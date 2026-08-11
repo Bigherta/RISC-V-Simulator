@@ -13,7 +13,7 @@ void INQ::push(uint32_t raw, int pc, int32_t predictedPC,
   entry.raw = raw;
   entry.pc = pc;
   entry.predictedPC = predictedPC;
-  entry.ras_ckpt = ckpt;
+  entry.BPsnapshot = ckpt;
   INQqueue[tail] = entry;
   tail = (tail + 1) & (INQ_CAP - 1);
 }
@@ -23,10 +23,10 @@ int32_t INQ::headPredictedPC() const {
     throw std::runtime_error("headPredictedPC on empty INQ!");
   return INQqueue[head].predictedPC;
 }
-BranchPredictorSnapshot INQ::headRASCkpt() const {
+BranchPredictorSnapshot INQ::headBPSnapshot() const {
   if (isEmpty())
     throw std::runtime_error("headRASCkpt on empty INQ!");
-  return INQqueue[head].ras_ckpt;
+  return INQqueue[head].BPsnapshot;
 }
 
 Instruct INQ::headNinst() const {

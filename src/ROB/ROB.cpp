@@ -28,15 +28,9 @@ ROBEntry ROB::peek() const {
 
 uint64_t ROB::getSeq(int index) const { return ROBqueue[index].seq; }
 
-bool ROB::isValueValidAt(int index) const {
-  return ROBqueue[index].isValueValid;
-}
-
 bool ROB::isCommitReadyAt(int index) const {
   return ROBqueue[index].isCommitReady;
 }
-
-int32_t ROB::getValue(int index) const { return ROBqueue[index].value; }
 
 ROBType ROB::getType(int index) const { return ROBqueue[index].type; }
 
@@ -47,41 +41,32 @@ int32_t ROB::getPC(int index) const { return ROBqueue[index].pc; }
 bool ROB::getHalt(int index) const { return ROBqueue[index].halt; }
 
 const BranchPredictorSnapshot &ROB::getRASCkpt(int index) const {
-  return ROBqueue[index].ras_ckpt;
+  return ROBqueue[index].ckpt.BPsnapshot;
 }
 
-const int *ROB::getRATCkpt(int index) const {
-  return ROBqueue[index].rat_ckpt;
+const int *ROB::getRATPrfCkpt(int index) const {
+  return ROBqueue[index].ckpt.RATsnapshot.RAT_snapshot;
 }
 
-void ROB::writeROBValue(int32_t value, int index) {
-  if (index < 0 || index >= ROB_CAP)
-    return;
-  ROBqueue[index].value = value;
+uint32_t ROB::getFlHeadSeqCkpt(int index) const {
+  return ROBqueue[index].ckpt.flHeadSeqCkpt;
 }
-void ROB::writeROBPredictedPC(uint32_t pc, int index) {
-  if (index < 0 || index >= ROB_CAP)
-    return;
-  ROBqueue[index].predictedPC = pc;
-}
+
 void ROB::setROBCommitReady(int index) {
   if (index < 0 || index >= ROB_CAP)
     return;
   ROBqueue[index].isCommitReady = true;
 }
 
-void ROB::setROBValueValid(int index) {
-  if (index < 0 || index >= ROB_CAP)
-    return;
-  ROBqueue[index].isValueValid = true;
-}
-
 int ROB::getPredictedPC(int index) const { return ROBqueue[index].predictedPC; }
 
 uint8_t ROB::getLsqTailSnapshot(int index) const { return ROBqueue[index].lsqTailSnapshot; }
 
+int ROB::getNewPhy(int index) const { return ROBqueue[index].newPhy; }
+
+int ROB::getOldPhy(int index) const { return ROBqueue[index].oldPhy; }
+
 bool ROB::isHeadCommitReady() const { return peek().isCommitReady; }
-bool ROB::isHeadValueValid() const { return peek().isValueValid; }
 
 uint64_t ROB::headSeq() const { return ROBqueue[head].seq; }
 

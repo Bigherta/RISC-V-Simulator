@@ -22,6 +22,7 @@ constexpr int LHT_CAP = 1 << 12;
 constexpr int LOCAL_HISTORY_BIT = 8;
 constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 128;
+constexpr int PRF_CAP = 128;
 enum class Operation {
   ADD,
   SUB,
@@ -69,12 +70,7 @@ struct Instruct {
   int32_t imm = 0;
   uint32_t pc = 0;
   bool isHalt = false;
-};
-
-struct IssueResult {
-  bool valid = false;
-  int rd = 0;
-  int robIndex = -1;
+  bool allocDest = false;
 };
 
 struct ArithmeticCalculateResult {
@@ -97,12 +93,6 @@ struct BranchResult {
   uint64_t robSeq;
 };
 
-struct CDBInfo {
-  uint8_t index;
-  bool busy;
-  ArithmeticCalculateResult result;
-};
-
 struct MemRequest {
   Operation op;
   int remainCycle = 3;
@@ -112,12 +102,6 @@ struct MemRequest {
   int n_bytes;
   int robIndex;
   uint64_t robSeq;
-};
-
-struct RATWritePort {
-  bool valid = false;
-  uint32_t reg = 0;
-  int32_t value = 0;
 };
 
 struct SquashInfo {
@@ -160,8 +144,10 @@ struct RATSnapshot {
   int RAT_snapshot[REGISTER_CAP];
 };
 
+// 组合多个单元快照的分支 checkpoint（每个控制指令在 ROB 中保存一份）
 struct Checkpoint {
-  BranchPredictorSnapshot BPsnapshot;
-  RATSnapshot RATsnapshot;
+  RATSnapshot RATsnapshot;                 // RAT_PRF 快照
+  BranchPredictorSnapshot BPsnapshot{};    // GHR/RAS 快照
+  uint32_t flHeadSeqCkpt = 0;              // free list head 快照
 };
 #endif // COMMON_HPP

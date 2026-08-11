@@ -80,17 +80,7 @@ auto LSQ::getValue(int index) const -> int32_t {
 
 auto LSQ::isHeadLoad() const -> bool { return LSQqueue[head].isLoad; }
 
-auto LSQ::headRobIndex() const -> int { return LSQqueue[head].robIndex; }
-
-auto LSQ::headAddress() const -> uint32_t { return LSQqueue[head].address; }
-
-auto LSQ::headValue() const -> int32_t { return LSQqueue[head].value; }
-
 auto LSQ::headRobSeq() const -> uint64_t { return LSQqueue[head].robSeq; }
-
-auto LSQ::headIsUnsigned() const -> bool { return LSQqueue[head].isUnsigned; }
-
-auto LSQ::headNBytes() const -> int { return LSQqueue[head].n_bytes; }
 
 auto LSQ::getRobIndex(int index) const -> int {
   return LSQqueue[index].robIndex;

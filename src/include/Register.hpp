@@ -18,24 +18,23 @@ public:
 struct OperandInfo {
   bool ready;
   int32_t value;
-  int robIndex;
+  int phyRegIndex;
 };
 
 class RegCluster {
 private:
   Register reg[REGISTER_CAP];
-  int RAT[REGISTER_CAP];
-
+  int RAT_PRF[REGISTER_CAP];
 public:
   RegCluster();
 
   int32_t readReg(int regNum) const;
   void writeReg(int regNum, int32_t value);
 
-  int readRAT(int regNum) const;
-  void setRAT(int regNum, int robIndex);
-  RATSnapshot snapshotRAT() const;
-  void restoreRAT(RATSnapshot);
+  int readRAT_PRF(int regNum) const;
+  void setRAT_PRF(int regNum, int PRF_id);
+  RATSnapshot snapshotRAT_PRF() const;
+  void restoreRAT_PRF(const RATSnapshot &snapshot);
   OperandInfo readOperand(int regNum) const;
   void resetX0();
 };

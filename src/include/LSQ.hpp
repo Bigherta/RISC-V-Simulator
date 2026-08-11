@@ -56,12 +56,7 @@ public:
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;
   auto isHeadLoad() const -> bool;
-  auto headRobIndex() const -> int;
-  auto headAddress() const -> uint32_t;
-  auto headValue() const -> int32_t;
   auto headRobSeq() const -> uint64_t;
-  auto headIsUnsigned() const -> bool;
-  auto headNBytes() const -> int;
   auto getRobIndex(int index) const -> int;
   auto getRobSeq(int index) const -> uint64_t;
   auto getIsLoad(int index) const -> bool;

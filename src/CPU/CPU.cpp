@@ -9,7 +9,7 @@ CPU::CPU(Memory mem) : CPUstate(mem), InstructMem(mem), DataMem(mem) {}
 
 void CPU::fetch() {
   if (squashDetect.needSquash) {
-    CPUstate.INQModule.clear();
+    CPUstate.FQModule.clear();
     CPUstate.programCounter = squashDetect.SquashPC;
     CPUstate.haltFetched = false;
     return;
@@ -28,7 +28,7 @@ void CPU::fetch() {
                         (fourth_byte << 24);
   if (raw_inst == 0x0ff00513)
     CPUstate.haltFetched = true;
-  if (!INQModule.isFull()) {
+  if (!FQModule.isFull()) {
     auto prediction = BPModule.predict(programCounter);
     auto predictedPC =
         prediction.taken ? prediction.predictPC : programCounter + 4;
@@ -48,23 +48,30 @@ void CPU::fetch() {
       CPUstate.BPModule.shiftGHR(prediction.taken);
     else if (opcode == 0b1101111 || opcode == 0b1100111)
       CPUstate.BPModule.shiftGHR(true);
-    CPUstate.INQModule.push(raw_inst, programCounter, predictedPC, ckpt);
+    CPUstate.FQModule.push(raw_inst, programCounter, predictedPC, ckpt);
     CPUstate.programCounter = predictedPC;
   }
 }
 
 void CPU::decode() {
   if (squashDetect.needSquash) {
+    CPUstate.IQModule.clear();
     return;
   }
-  auto detected = INQModule.decodeDetect();
-  if (detected >= 0) {
-    CPUstate.INQModule.decode(detected);
-  }
+  if (FQModule.isEmpty() || IQModule.isFull())
+    return;
+  auto raw = FQModule.headRaw();
+  Uop uop = Decoder::decode(static_cast<int32_t>(raw));
+  uop.pc = FQModule.headpc();
+  uop.predictedPC = FQModule.headPredictedPC();
+  uop.BPSnapshot = FQModule.headBPSnapshot();
+  uop.isHalt = (raw == 0x0ff00513);
+  CPUstate.IQModule.push(uop);
+  CPUstate.FQModule.pop();
 }
 
-int CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
-                                 bool isControl) {
+int CPU::issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
+                         bool isControl) {
   if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
     return -1;
   }
@@ -116,17 +123,16 @@ int CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.headPredictedPC();
+  newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.oldPhy =
-      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
                  Physical_regNum, newROB.oldPhy);
   if (isControl) {
     newROB.type = ROBType::LINK;
-    newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+    newROB.ckpt.BPsnapshot = inst.BPSnapshot;
     auto prfSnap = REGModule.snapshotRAT_PRF();
     memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
            sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
@@ -152,7 +158,7 @@ int CPU::issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
   return robIndex;
 }
 
-int CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
+int CPU::issue_UandJ(const Uop &inst, bool has_PC, bool isControl) {
   if (IntegerRSModule.isIntegerRSFull() || ROBModule.isFull()) {
     return -1;
   }
@@ -172,17 +178,16 @@ int CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.headPredictedPC();
+  newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.oldPhy =
-      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
                  Physical_regNum, newROB.oldPhy);
   if (isControl) {
     newROB.type = ROBType::LINK;
-    newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+    newROB.ckpt.BPsnapshot = inst.BPSnapshot;
     auto prfSnap = REGModule.snapshotRAT_PRF();
     memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
            sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
@@ -208,7 +213,7 @@ int CPU::issue_UandJ(Instruct inst, bool has_PC, bool isControl) {
   return robIndex;
 }
 
-int CPU::issue_B(Instruct inst) {
+int CPU::issue_B(const Uop &inst) {
   if (BranchRSModule.isBranchRSFull() || ROBModule.isFull()) {
     return -1;
   }
@@ -251,9 +256,9 @@ int CPU::issue_B(Instruct inst) {
   }
   ROBEntry newROB(ROBType::BRANCH);
   newROB.pc = inst.pc;
-  newROB.predictedPC = INQModule.headPredictedPC();
+  newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.ckpt.BPsnapshot = INQModule.headBPSnapshot();
+  newROB.ckpt.BPsnapshot = inst.BPSnapshot;
   auto prfSnap = REGModule.snapshotRAT_PRF();
   memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
          sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
@@ -269,7 +274,7 @@ int CPU::issue_B(Instruct inst) {
   return robIndex;
 }
 
-int CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
+int CPU::issue_Load(const Uop &inst, int n_bytes, bool isUnsigned) {
   if (LoadRSModule.isLoadRSFull() || ROBModule.isFull() || LSQModule.isFull()) {
     return -1;
   }
@@ -302,8 +307,7 @@ int CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
-  newROB.oldPhy =
-      inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
@@ -321,7 +325,7 @@ int CPU::issue_Load(Instruct inst, int n_bytes, bool isUnsigned) {
   return robIndex;
 }
 
-int CPU::issue_Store(Instruct inst, int n_bytes) {
+int CPU::issue_Store(const Uop &inst, int n_bytes) {
 
   if (StoreAddressRSModule.isStoreAddressRSFull() ||
       StoreValueRSModule.isStoreValueRSFull() || ROBModule.isFull() ||
@@ -393,8 +397,8 @@ int CPU::issue_Store(Instruct inst, int n_bytes) {
 void CPU::issue() {
   if (!squashDetect.needSquash) {
     int res = -1;
-    if (!INQModule.isEmpty() && INQModule.headDecoded()) {
-      Instruct inst = INQModule.headNinst();
+    if (!IQModule.isEmpty()) {
+      const auto &inst = IQModule.headUop();
       switch (inst.type) {
       case RISC_V::R: {
         res = issue_IntegerRS(inst, true, false, false);
@@ -484,18 +488,18 @@ void CPU::issue() {
         break;
       }
       case RISC_V::RV_INVALID: {
-        CPUstate.INQModule.pop();
+        CPUstate.IQModule.pop();
         res = -1;
         break;
       }
       }
     }
     if (res != -1)
-      CPUstate.INQModule.pop();
+      CPUstate.IQModule.pop();
   }
 }
 
-Operation CPU::decodeOp(Instruct inst) {
+Operation CPU::decodeOp(const Uop &inst) {
   if (inst.type == RISC_V::R) {
     int link_funct = (inst.funct3 << 7) | inst.funct7;
     switch (link_funct) {
@@ -1114,7 +1118,7 @@ void CPU::flush() {
     // 2. clear the wrong LSQ
     CPUstate.LSQModule.flush(
         ROBModule.getLsqTailSnapshot(squashDetect.SquashIndex));
-    // 3. clear the wrong RAT_PRF 
+    // 3. clear the wrong RAT_PRF
     // only modified by the issue instructions after the control inst
     if (squashDetect.SquashIndex >= 0) {
       RATSnapshot snapP;
@@ -1157,7 +1161,8 @@ void CPU::read() {
   memcpy(&AGUModule, &CPUstate.AGUModule, sizeof(AGUModule));
   memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
   memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
-  memcpy(&INQModule, &CPUstate.INQModule, sizeof(INQModule));
+  memcpy(&FQModule, &CPUstate.FQModule, sizeof(FQModule));
+  memcpy(&IQModule, &CPUstate.IQModule, sizeof(IQModule));
   memcpy(&PRFModule, &CPUstate.PRFModule, sizeof(PRFModule));
   memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
   memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
@@ -1171,7 +1176,7 @@ void CPU::read() {
 }
 
 bool CPU::checkPRFInvariant() const {
-  
+
   uint32_t bitmap[PRF_CAP / 32] = {};
   uint32_t count = 0;
   auto mark = [&](int phy) {
@@ -1210,7 +1215,8 @@ void CPU::run() {
     CPUstate.REGModule.resetX0();
     assert(checkPRFInvariant());
     ++clock;
-    finish = haltCommitted && INQModule.isEmpty() && ROBModule.isEmpty();
+    finish = haltCommitted && FQModule.isEmpty() && IQModule.isEmpty() &&
+             ROBModule.isEmpty();
   }
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);

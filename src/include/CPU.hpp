@@ -5,7 +5,8 @@
 #include "AGU.hpp"
 #include "Arbiter.hpp"
 #include "BRU.hpp"
-#include "INQ.hpp"
+#include "Decoder.hpp"
+#include "FetchQueue.hpp"
 #include "LSQ.hpp"
 #include "PRF.hpp"
 #include "Memory.hpp"
@@ -29,7 +30,8 @@ struct systemState {
   AGU AGUModule;
   BRU BRUModule;
   LSQ LSQModule;
-  INQ INQModule;
+  FetchQueue FQModule;
+  InstructQueue IQModule;
   PRF PRFModule;
   Memory DataMem;
   BranchPredictor BPModule;
@@ -59,7 +61,8 @@ private:
   AGU AGUModule;
   BRU BRUModule;
   LSQ LSQModule;
-  INQ INQModule;
+  FetchQueue FQModule;
+  InstructQueue IQModule;
   PRF PRFModule;
   Memory DataMem;
   BranchPredictor BPModule;
@@ -80,13 +83,13 @@ public:
   void fetch();
   void decode();
   void issue();
-  int issue_IntegerRS(Instruct inst, bool has_rs2, bool imm_as_vk,
+  int issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
                       bool isControl);
-  int issue_UandJ(Instruct inst, bool has_PC, bool isControl = false);
-  int issue_Load(Instruct inst, int n_bytes, bool isUnsigned);
-  int issue_Store(Instruct inst, int n_bytes);
-  int issue_B(Instruct inst);
-  static Operation decodeOp(Instruct inst);
+  int issue_UandJ(const Uop &inst, bool has_PC, bool isControl = false);
+  int issue_Load(const Uop &inst, int n_bytes, bool isUnsigned);
+  int issue_Store(const Uop &inst, int n_bytes);
+  int issue_B(const Uop &inst);
+  static Operation decodeOp(const Uop &inst);
   void execute();
   void writeBack();
   CDBBypassResult CDBBypass(int robIndex) const;

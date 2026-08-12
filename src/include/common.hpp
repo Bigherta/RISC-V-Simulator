@@ -8,7 +8,8 @@ constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
 constexpr int LSQ_CAP = 64;
 constexpr int ROB_CAP = 64;
-constexpr int INQ_CAP = 8;
+constexpr int FQ_CAP = 8;
+constexpr int IQ_CAP = 16;
 constexpr int REGISTER_CAP = 32;
 constexpr int FLUSHARBITER_CAP = 4;
 constexpr int ALU_CAP = 4;
@@ -57,20 +58,6 @@ enum class RISC_V {
   U,
   J,
   RV_INVALID,
-};
-
-struct Instruct {
-  RISC_V type = RISC_V::RV_INVALID;
-  int opcode = 0;
-  int funct3 = 0;
-  int funct7 = 0;
-  int rd = 0;
-  int rs1 = 0;
-  int rs2 = 0;
-  int32_t imm = 0;
-  uint32_t pc = 0;
-  bool isHalt = false;
-  bool allocDest = false;
 };
 
 struct ArithmeticCalculateResult {
@@ -144,10 +131,25 @@ struct RATSnapshot {
   int RAT_snapshot[REGISTER_CAP];
 };
 
-// 组合多个单元快照的分支 checkpoint（每个控制指令在 ROB 中保存一份）
 struct Checkpoint {
-  RATSnapshot RATsnapshot;                 // RAT_PRF 快照
-  BranchPredictorSnapshot BPsnapshot{};    // GHR/RAS 快照
-  uint32_t flHeadSeqCkpt = 0;              // free list head 快照
+  RATSnapshot RATsnapshot;                
+  BranchPredictorSnapshot BPsnapshot{};    
+  uint32_t flHeadSeqCkpt = 0;              
+};
+
+struct Uop {
+  RISC_V type = RISC_V::RV_INVALID;
+  int opcode = 0;
+  int funct3 = 0;
+  int funct7 = 0;
+  int rd = 0;
+  int rs1 = 0;
+  int rs2 = 0;
+  int32_t imm = 0;
+  uint32_t pc = 0;
+  bool isHalt = false;
+  bool allocDest = false;
+  int32_t predictedPC = 0;
+  BranchPredictorSnapshot BPSnapshot{};
 };
 #endif // COMMON_HPP

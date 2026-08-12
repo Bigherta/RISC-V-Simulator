@@ -1,7 +1,8 @@
 #include "../include/Decoder.hpp"
+#include <cstring>
 
-Instruct Decoder::decode(int32_t raw_inst) {
-  Instruct inst;
+Uop Decoder::decode(int32_t raw_inst) {
+  Uop inst;
   uint32_t raw = static_cast<uint32_t>(raw_inst);
   auto opcode = raw & 0x7F;
   inst.opcode = opcode;
@@ -90,4 +91,29 @@ Instruct Decoder::decode(int32_t raw_inst) {
     inst.allocDest = true;
   }
   return inst;
+}
+
+bool InstructQueue::isEmpty() const { return head == tail; }
+
+bool InstructQueue::isFull() const { return ((tail + 1) & (IQ_CAP - 1)) == head; }
+
+void InstructQueue::push(Uop inst){
+  instructQueueEntries[tail] = inst;
+  tail = (tail + 1) & (IQ_CAP - 1);
+}
+const Uop &InstructQueue::headUop() const{
+  return instructQueueEntries[head];
+}
+void InstructQueue::pop(){
+  head = (head + 1) & (IQ_CAP - 1);
+}
+uint8_t InstructQueue::getHead() const{
+  return head;
+}
+uint8_t InstructQueue::getTail() const{
+  return tail;
+}
+void InstructQueue::clear(){
+  std::memset(this, 0, sizeof(*this));
+  head = tail = 0;
 }

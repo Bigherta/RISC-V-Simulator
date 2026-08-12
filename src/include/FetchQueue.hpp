@@ -1,42 +1,37 @@
 #pragma once
-#ifndef INQ_HPP
-#define INQ_HPP
+#ifndef FETCHQUEUE_HPP
+#define FETCHQUEUE_HPP
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
-struct INQEntry {
+struct FetchQueueEntry {
   uint32_t raw;
   int pc;
   int32_t predictedPC;
-  Instruct ninst;
-  bool decoded;
   BranchPredictorSnapshot BPsnapshot;
 };
 
-class INQ {
+class FetchQueue {
   friend struct ReorderTester;
 private:
-  INQEntry INQqueue[INQ_CAP];
+  FetchQueueEntry FetchQueueEntries[FQ_CAP];
   uint8_t head = 0;
   uint8_t tail = 0;
 
 public:
-  INQ() { std::memset(this, 0, sizeof(*this)); }
+  FetchQueue() { std::memset(this, 0, sizeof(*this)); }
   bool isFull() const;
   bool isEmpty() const;
   
   void push(uint32_t raw, int pc, int32_t predictedPC,
             const BranchPredictorSnapshot &ckpt);
+  uint32_t headRaw() const;
+  int headpc() const;
   int32_t headPredictedPC() const;
   BranchPredictorSnapshot headBPSnapshot() const;
-  Instruct headNinst() const;
-  Instruct pop();
+  void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
-  int decodeDetect() const;
-  void decode(int index);
   void clear();
-  bool headDecoded() const;
-  
 };
-#endif // INQ_HPP
+#endif // FETCHQUEUE_HPP

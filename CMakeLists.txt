@@ -14,7 +14,7 @@ set(CPU_SOURCES
     src/BRU/BRU.cpp
     src/LSQ/LSQ.cpp
     src/Register/Register.cpp
-    src/INQ/INQ.cpp
+    src/FetchQueue/FetchQueue.cpp
     src/BranchPredictor/BranchPredictor.cpp
     src/PRF/PRF.cpp
 )

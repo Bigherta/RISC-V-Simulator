@@ -623,63 +623,6 @@ void CPU::execute() {
       }
     }
   }
-  // AGU execute
-  if (!AGUModule.isFull()) {
-    int Execute_RS_index = 0xFFFFFFFF;
-    int Execute_RS_type = -1;
-    ReservationStation Execute_RS{};
-    bool foundAny = false;
-    for (int i = 0; i < LOADRS_CAP; ++i) {
-      auto rs = LoadRSModule.LoadRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 1;
-          foundAny = true;
-        } else if (ROBModule.getSeq(rs.robIndex) <
-                   ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 1;
-        }
-      }
-    }
-    for (int i = 0; i < STORERS_CAP; ++i) {
-      auto rs = StoreAddressRSModule.StoreAddressRS[i];
-      if (!rs.free && rs.qj == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 2;
-          foundAny = true;
-        } else if (ROBModule.getSeq(rs.robIndex) <
-                   ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 2;
-        }
-      }
-    }
-    if (Execute_RS_index != 0xFFFFFFFF) {
-      uint64_t execSeq = ROBModule.getSeq(Execute_RS.robIndex);
-      if (!squashDetect.needSquash ||
-          (squashDetect.needSquash && execSeq < squashDetect.SquashSeq)) {
-        CPUstate.AGUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
-                                Execute_RS.robIndex, execSeq);
-        if (Execute_RS_type == 1) {
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].free = true;
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qj = -1;
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qk = -1;
-        } else {
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].free =
-              true;
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].qj =
-              -1;
-        }
-      }
-    }
-  }
   for (int i = 0; i < STORERS_CAP; ++i) {
     if (!StoreValueRSModule.StoreValueRS[i].free &&
         StoreValueRSModule.StoreValueRS[i].qrs2 == -1) {
@@ -938,26 +881,6 @@ void CPU::writeBack() {
     CPUstate.BRUModule.remove(brRobSeq);
   }
 
-  // AGU writeBack: address result -> LSQ directly
-  if (!AGUModule.isEmpty()) {
-    auto aguRobSeq = AGUModule.headRobSeq();
-    if (!squashDetect.needSquash ||
-        (squashDetect.needSquash && aguRobSeq < squashDetect.SquashSeq)) {
-      auto index = LSQModule.getIndexBySeq(aguRobSeq);
-      if (index >= 0) {
-        auto value = AGUModule.headValue();
-        auto plan = LSQModule.planAddressForward(index, value);
-        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), index);
-        CPUstate.LSQModule.applyStoreToLoadForward(plan);
-        if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("AGU addr seq=%llu -> LSQ[%d] = %u\n",
-                       static_cast<unsigned long long>(aguRobSeq), index,
-                       static_cast<uint32_t>(value));
-      }
-    }
-    CPUstate.AGUModule.remove(aguRobSeq);
-  }
-
   CDBOutput cdbOut = cdbArbiter;
   if (!cdbOut.valid) {
     if (BranchSquash.needSquash) {
@@ -1129,11 +1052,9 @@ void CPU::flush() {
     }
     // 4. clear the wrong ALU outputBuffer
     CPUstate.ALUModule.flush(squashDetect.SquashSeq);
-    // 5. clear the wrong AGU outputBuffer
-    CPUstate.AGUModule.flush(squashDetect.SquashSeq);
-    // 6. clear the wrong BRU outputBuffer
+    // 5. clear the wrong BRU outputBuffer
     CPUstate.BRUModule.flush(squashDetect.SquashSeq);
-    // 7. clear the old flushArbiter elements
+    // 6. clear the old flushArbiter elements
     CPUstate.flushArbiter.clear(squashDetect.SquashSeq);
     // 8. clear the wrong RAS
     auto index = squashDetect.SquashIndex;
@@ -1173,6 +1094,10 @@ void CPU::read() {
   haltRd = CPUstate.haltRd;
   squashDetect = CPUstate.flushArbiter.arbitResult();
   cdbArbiter = CDBArbiter::arbitrate(ALUModule, LSQModule, squashDetect);
+  aguInput.squashDetect = squashDetect;
+  memcpy(aguInput.LoadRS, LoadRSModule.LoadRS, sizeof(aguInput.LoadRS));
+  memcpy(aguInput.StoreAddressRS, StoreAddressRSModule.StoreAddressRS,
+         sizeof(aguInput.StoreAddressRS));
 }
 
 bool CPU::checkPRFInvariant() const {
@@ -1209,6 +1134,7 @@ void CPU::run() {
     issue();
     writeBack();
     execute();
+    AGUModule.tick(aguInput, CPUstate);  // 模块工作：AGU 一进一出（execute+writeBack）
     commit();
     flush();
     decode();

@@ -68,6 +68,7 @@ private:
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
+  AGUInput aguInput{ROBModule, LSQModule};
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;

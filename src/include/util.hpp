@@ -57,12 +57,12 @@ static unsigned parseVerbose(const char *env) {
   return mask;
 }
 
-bool enabled(Topic topic) {
+inline bool enabled(Topic topic) {
   static const unsigned mask = parseVerbose(std::getenv("VERBOSE"));
   return (mask & topic) != 0;
 }
 
-void print(const char *fmt, ...) {
+inline void print(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
   vfprintf(stderr, fmt, args);

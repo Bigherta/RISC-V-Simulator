@@ -12,6 +12,7 @@ set(CPU_SOURCES
     src/ALU/ALU.cpp
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp
+    src/Arbiter/Arbiter.cpp
     src/LSQ/LSQ.cpp
     src/Register/Register.cpp
     src/FetchQueue/FetchQueue.cpp

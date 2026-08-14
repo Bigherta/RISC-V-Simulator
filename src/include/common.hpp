@@ -119,6 +119,7 @@ struct BTBEntry {
   uint32_t actualPC;
   uint32_t target;
   bool valid;
+  bool unconditional;
 };
 
 struct BranchPredictorSnapshot {

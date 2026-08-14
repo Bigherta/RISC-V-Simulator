@@ -1,7 +1,82 @@
 #include "../include/BranchPredictor.hpp"
+#include "../include/CPU.hpp"
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+
+void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
+  struct Cand {
+    bool valid = false;
+    uint64_t seq = 0;
+    int32_t pc = 0;
+    bool taken = false;
+    int32_t target = 0;
+    uint16_t ghr = 0;
+    bool cond = true;
+  } bru, cdb;
+
+  // collect candidate 1: BRU (B-type branch completed)
+  if (!input.BRUModule.isEmpty()) {
+    int index = input.BRUModule.headRobIndex();
+    uint64_t brRobSeq = input.BRUModule.headRobSeq();
+    int pcResult = input.BRUModule.headPCResult();
+    int pcFrom = input.BRUModule.headPCFrom();
+    if (index >= 0) {
+      ++CPUstate.branchTotal;
+      bool correct = pcResult == input.ROBModule.getPredictedPC(index);
+      if (correct)
+        ++CPUstate.branchCorrect;
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash &&
+           brRobSeq < input.squashDetect.SquashSeq)) {
+        bru.valid = true;
+        bru.seq = brRobSeq;
+        bru.pc = pcFrom;
+        bru.taken = pcResult != pcFrom + 4;
+        bru.target = pcResult;
+        bru.ghr = input.ROBModule.getRASCkpt(index).GHR_snapshot;
+      }
+    }
+  }
+  // collect candidate 2: CDB (JAL/JALR control transfer completed)
+  auto cdbOut = input.cdbArbiter;
+  if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
+      cdbOut.result.robSeq >= input.ROBModule.headSeq()) {
+    auto robIndex = cdbOut.result.robIndex;
+    auto robSeq = cdbOut.result.robSeq;
+    const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         robSeq < input.squashDetect.SquashSeq)) {
+      ++CPUstate.branchTotal;
+      bool correct = pc == input.ROBModule.getPredictedPC(robIndex);
+      if (correct)
+        ++CPUstate.branchCorrect;
+      cdb.valid = true;
+      cdb.seq = robSeq;
+      cdb.pc = input.ROBModule.getPC(robIndex);
+      cdb.taken = true;
+      cdb.target = static_cast<int32_t>(pc);
+      cdb.ghr = input.ROBModule.getRASCkpt(robIndex).GHR_snapshot;
+      cdb.cond = false;
+    }
+  }
+
+  // direction-split: conditional branches train BHT/LHT/Gshare + BTB,
+  // JAL/JALR train only the BTB (with unconditional flag), so the direction
+  // tables are never polluted by always-taken jumps.
+  auto apply = [&](const Cand &c) {
+    if (c.cond)
+      CPUstate.BPModule.update(c.pc, c.taken, c.target, c.ghr);
+    else
+      CPUstate.BPModule.updateJump(c.pc, c.target);
+  };
+  // fixed order: BRU candidate first, CDB candidate second
+  if (bru.valid)
+    apply(bru);
+  if (cdb.valid)
+    apply(cdb);
+}
 PredictInfo BranchPredictor::predict(int32_t pc) {
   auto local_index = (pc >> 2) & (LHT_CAP - 1);
   auto global_index = ((pc >> 2) ^ GHR) & (PC_Direct_CAP - 1);
@@ -10,8 +85,12 @@ PredictInfo BranchPredictor::predict(int32_t pc) {
   auto history = LHT[local_index];
   bool hit = BTB[BTB_index].valid && BTB[BTB_index].actualPC == pc;
   bool use_global = selector[selector_index] >= 2;
-  bool taken = hit && (use_global ? globalPHT[global_index] >= 2
-                                  : localPHT[history] >= 2);
+  bool taken;
+  if (hit && BTB[BTB_index].unconditional)
+    taken = true;
+  else
+    taken = hit && (use_global ? globalPHT[global_index] >= 2
+                               : localPHT[history] >= 2);
   int32_t predictPC = pc + 4;
   if (taken && hit) {
     predictPC = BTB[BTB_index].target;
@@ -56,7 +135,15 @@ void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
     BTB[BTB_index].actualPC = pc;
     BTB[BTB_index].target = target;
     BTB[BTB_index].valid = true;
+    BTB[BTB_index].unconditional = false;
   }
+}
+void BranchPredictor::updateJump(int32_t pc, int32_t target) {
+  auto BTB_index = (pc >> 2) & (PC_Direct_CAP - 1);
+  BTB[BTB_index].actualPC = pc;
+  BTB[BTB_index].target = target;
+  BTB[BTB_index].valid = true;
+  BTB[BTB_index].unconditional = true;
 }
 void BranchPredictor::shiftGHR(bool taken) {
   GHR = ((GHR << 1) | (taken ? 1 : 0)) & HISTORY_MASK;

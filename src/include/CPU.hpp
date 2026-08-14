@@ -40,6 +40,8 @@ struct systemState {
   bool haltFetched = false;
   bool haltCommitted = false;
   int haltRd = -1;
+  uint64_t branchTotal = 0;
+  uint64_t branchCorrect = 0;
 
   systemState() : programCounter(0) {}
   systemState(Memory mem) : DataMem(mem), programCounter(0) {}
@@ -69,13 +71,13 @@ private:
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
   AGUInput aguInput{ROBModule, LSQModule};
+  BRUInput bruInput{ROBModule};
+  BPUpdateInput bpInput{BRUModule, ROBModule};
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;
   bool haltCommitted = false;
   int haltRd = -1;
-  uint64_t branchTotal = 0;
-  uint64_t branchCorrect = 0;
   bool checkPRFInvariant() const;
 
 public:
@@ -93,8 +95,8 @@ public:
   static Operation decodeOp(const Uop &inst);
   void execute();
   void writeBack();
-  CDBBypassResult CDBBypass(int robIndex) const;
   void CDBBroadcast(int robIndex, int value);
+  CDBBypassResult CDBBypass(int robIndex) const;
   void commit();
   void flush();
   void run();

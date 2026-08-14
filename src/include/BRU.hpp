@@ -3,6 +3,15 @@
 #ifndef BRU_HPP
 #define BRU_HPP
 #include "common.hpp"
+#include "RS.hpp"
+#include "ROB.hpp"
+struct systemState;
+struct BRUInput {
+  BranchReservationStation branchRS[BRANCHRS_CAP];
+  SquashInfo squashDetect;
+  const ROB &ROBModule;
+  BRUInput(const ROB &rob) : ROBModule(rob) {}
+};
 class BRU {
   friend struct ReorderTester;
 private:
@@ -22,5 +31,6 @@ public:
   int headRobIndex() const;
   uint64_t headRobSeq() const;
   bool isValid(int index) const { return slotValid[index]; }
+  void tick(const BRUInput&, systemState&);
 };
 #endif // BRU_HPP

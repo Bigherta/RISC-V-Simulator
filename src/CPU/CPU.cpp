@@ -647,41 +647,6 @@ void CPU::execute() {
       }
     }
   }
-  // BRU execute
-  if (!BRUModule.isFull()) {
-    int Execute_RS_index = 0xFFFFFFFF;
-    int Execute_RS_type = -1;
-    BranchReservationStation Execute_RS{};
-    bool foundAny = false;
-    for (int i = 0; i < BRANCHRS_CAP; ++i) {
-      auto rs = BranchRSModule.BranchRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 0;
-          foundAny = true;
-        } else if (ROBModule.getSeq(rs.robIndex) <
-                   ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 0;
-        }
-      }
-    }
-    if (Execute_RS_index != 0xFFFFFFFF) {
-      uint64_t execSeq = ROBModule.getSeq(Execute_RS.robIndex);
-      if (!squashDetect.needSquash ||
-          (squashDetect.needSquash && execSeq < squashDetect.SquashSeq)) {
-        CPUstate.BRUModule.BRUExecute(
-            Execute_RS.vj, Execute_RS.vk, Execute_RS.pc, Execute_RS.imm,
-            Execute_RS.op, Execute_RS.robIndex, execSeq);
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].free = true;
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qj = -1;
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qk = -1;
-      }
-    }
-  }
   // MEM execute
   CPUstate.DataMem.execute();
   // LSQ execute
@@ -766,6 +731,16 @@ void CPU::execute() {
   }
 }
 
+CDBBypassResult CPU::CDBBypass(int phy) const {
+  CDBBypassResult out;
+  if (cdbArbiter.valid && !cdbArbiter.result.isControl &&
+      ROBModule.getNewPhy(cdbArbiter.result.robIndex) == phy) {
+    out.valid = true;
+    out.value = cdbArbiter.result.value;
+  }
+  return out;
+}
+
 void CPU::CDBBroadcast(int robIndex, int value) {
   int phy = ROBModule.getNewPhy(robIndex);
   if (phy < 0)
@@ -820,16 +795,6 @@ void CPU::CDBBroadcast(int robIndex, int value) {
   }
 }
 
-CDBBypassResult CPU::CDBBypass(int phy) const {
-  CDBBypassResult out;
-  if (cdbArbiter.valid && !cdbArbiter.result.isControl &&
-      ROBModule.getNewPhy(cdbArbiter.result.robIndex) == phy) {
-    out.valid = true;
-    out.value = cdbArbiter.result.value;
-  }
-  return out;
-}
-
 void CPU::writeBack() {
   // DMEM write back to the Load
   if (DataMem.isReady()) {
@@ -847,23 +812,17 @@ void CPU::writeBack() {
     CPUstate.DataMem.MemPull();
   }
   // BRU write back: if predicted wrong, send the flush signal
+  // (BPModule.update and branch statistics live in BPUpdateArbiter.tick)
   SquashInfo BranchSquash;
   if (!BRUModule.isEmpty()) {
     int index = BRUModule.headRobIndex();
     uint64_t brRobSeq = BRUModule.headRobSeq();
     int pcResult = BRUModule.headPCResult();
     int pcFrom = BRUModule.headPCFrom();
-    if (index >= 0) {
-      ++branchTotal;
-      if (pcResult == ROBModule.getPredictedPC(index)) {
-        ++branchCorrect;
-      }
-    }
     if (index >= 0 &&
         (!squashDetect.needSquash ||
          (squashDetect.needSquash && brRobSeq < squashDetect.SquashSeq))) {
       auto actualPC = pcResult;
-      auto taken = actualPC != pcFrom + 4;
       if (actualPC != ROBModule.getPredictedPC(index)) {
         if (debug::enabled(debug::TOPIC_BRANCH))
           debug::print("squash seq=%llu pc=%u (from %u)\n",
@@ -874,89 +833,65 @@ void CPU::writeBack() {
         BranchSquash.SquashIndex = index;
         BranchSquash.SquashSeq = brRobSeq;
       }
-      CPUstate.BPModule.update(pcFrom, taken, pcResult,
-                               ROBModule.getRASCkpt(index).GHR_snapshot);
       CPUstate.ROBModule.setROBCommitReady(index);
     }
     CPUstate.BRUModule.remove(brRobSeq);
   }
+  if (BranchSquash.needSquash)
+    CPUstate.flushArbiter.receive(BranchSquash);
 
+  // CDB write back: consume the arbitrated result
   CDBOutput cdbOut = cdbArbiter;
-  if (!cdbOut.valid) {
-    if (BranchSquash.needSquash) {
-      CPUstate.flushArbiter.receive(BranchSquash);
-    }
-    return;
-  }
-
-  if (cdbOut.aluGranted)
-    CPUstate.ALUModule.remove(cdbOut.result.robSeq);
-  if (squashDetect.needSquash &&
-      cdbOut.result.robSeq > squashDetect.SquashSeq) {
-    if (BranchSquash.needSquash) {
-      CPUstate.flushArbiter.receive(BranchSquash);
-    }
-    return;
-  }
-  auto robIndex = cdbOut.result.robIndex;
-  auto robSeq = cdbOut.result.robSeq;
-  auto isControl = cdbOut.result.isControl;
-  SquashInfo JumpSquash;
-  if (!isControl) {
-    auto value = cdbOut.result.value;
-    CDBBroadcast(robIndex, value);
-    if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
-      CPUstate.ROBModule.setROBCommitReady(robIndex);
-    }
-    if (cdbOut.lsqGranted) {
-      auto lsqIndex = LSQModule.getIndexBySeq(robSeq);
-      if (lsqIndex >= 0)
-        CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
-    }
-    int newPhy = ROBModule.getNewPhy(robIndex);
-    if (newPhy >= 0) {
-      CPUstate.PRFModule.write(newPhy, value);
-      if (debug::enabled(debug::TOPIC_PRF)) {
-        debug::print("PRF write P%d = %d (alu)\n", newPhy, value);
-        if (PRFModule.isReady(newPhy) && PRFModule.getValue(newPhy) != value)
-          debug::print("PRF mismatch P%d: rob=%d prf=%d\n", newPhy, value,
-                       PRFModule.getValue(newPhy));
+  if (cdbOut.valid) {
+    if (cdbOut.aluGranted)
+      CPUstate.ALUModule.remove(cdbOut.result.robSeq);
+    if (!squashDetect.needSquash ||
+        cdbOut.result.robSeq < squashDetect.SquashSeq) {
+      auto robIndex = cdbOut.result.robIndex;
+      auto robSeq = cdbOut.result.robSeq;
+      auto isControl = cdbOut.result.isControl;
+      SquashInfo JumpSquash;
+      if (!isControl) {
+        auto value = cdbOut.result.value;
+        CDBBroadcast(robIndex, value);
+        if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
+          CPUstate.ROBModule.setROBCommitReady(robIndex);
+        }
+        if (cdbOut.lsqGranted) {
+          auto lsqIndex = LSQModule.getIndexBySeq(robSeq);
+          if (lsqIndex >= 0)
+            CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
+        }
+        int newPhy = ROBModule.getNewPhy(robIndex);
+        if (newPhy >= 0) {
+          CPUstate.PRFModule.write(newPhy, value);
+          if (debug::enabled(debug::TOPIC_PRF)) {
+            debug::print("PRF write P%d = %d (alu)\n", newPhy, value);
+            if (PRFModule.isReady(newPhy) && PRFModule.getValue(newPhy) != value)
+              debug::print("PRF mismatch P%d: rob=%d prf=%d\n", newPhy, value,
+                           PRFModule.getValue(newPhy));
+          }
+        }
+      } else if (isControl) {
+        if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
+          const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+          const auto value = PRFModule.getValue(ROBModule.getNewPhy(robIndex));
+          CDBBroadcast(robIndex, value);
+          if (pc != ROBModule.getPredictedPC(robIndex)) {
+            if (debug::enabled(debug::TOPIC_BRANCH))
+              debug::print("squash seq=%llu pc=%u (jalr)\n",
+                           static_cast<unsigned long long>(robSeq), pc);
+            JumpSquash.needSquash = true;
+            JumpSquash.SquashPC = pc;
+            JumpSquash.SquashIndex = robIndex;
+            JumpSquash.SquashSeq = robSeq;
+          }
+          CPUstate.ROBModule.setROBCommitReady(robIndex);
+        }
       }
+      if (JumpSquash.needSquash)
+        CPUstate.flushArbiter.receive(JumpSquash);
     }
-  } else if (isControl) {
-    if (!ROBModule.isEmpty() && robSeq >= ROBModule.headSeq()) {
-      const auto pc = static_cast<uint32_t>(cdbOut.result.value);
-      const auto value = PRFModule.getValue(ROBModule.getNewPhy(robIndex));
-
-      CDBBroadcast(robIndex, value);
-      ++branchTotal;
-      if (pc == ROBModule.getPredictedPC(robIndex)) {
-        ++branchCorrect;
-      }
-      CPUstate.BPModule.update(ROBModule.getPC(robIndex), true,
-                               static_cast<int32_t>(pc),
-                               ROBModule.getRASCkpt(robIndex).GHR_snapshot);
-      if (pc != ROBModule.getPredictedPC(robIndex)) {
-        if (debug::enabled(debug::TOPIC_BRANCH))
-          debug::print("squash seq=%llu pc=%u (jalr)\n",
-                       static_cast<unsigned long long>(robSeq), pc);
-        JumpSquash.needSquash = true;
-        JumpSquash.SquashPC = pc;
-        JumpSquash.SquashIndex = robIndex;
-        JumpSquash.SquashSeq = robSeq;
-      }
-      CPUstate.ROBModule.setROBCommitReady(robIndex);
-    }
-  }
-  if (BranchSquash.needSquash && JumpSquash.needSquash) {
-    CPUstate.flushArbiter.receive(BranchSquash.SquashSeq < JumpSquash.SquashSeq
-                                      ? BranchSquash
-                                      : JumpSquash);
-  } else {
-    if (BranchSquash.needSquash)
-      CPUstate.flushArbiter.receive(BranchSquash);
-    if (JumpSquash.needSquash)
-      CPUstate.flushArbiter.receive(JumpSquash);
   }
 }
 
@@ -1052,8 +987,6 @@ void CPU::flush() {
     }
     // 4. clear the wrong ALU outputBuffer
     CPUstate.ALUModule.flush(squashDetect.SquashSeq);
-    // 5. clear the wrong BRU outputBuffer
-    CPUstate.BRUModule.flush(squashDetect.SquashSeq);
     // 6. clear the old flushArbiter elements
     CPUstate.flushArbiter.clear(squashDetect.SquashSeq);
     // 8. clear the wrong RAS
@@ -1098,6 +1031,10 @@ void CPU::read() {
   memcpy(aguInput.LoadRS, LoadRSModule.LoadRS, sizeof(aguInput.LoadRS));
   memcpy(aguInput.StoreAddressRS, StoreAddressRSModule.StoreAddressRS,
          sizeof(aguInput.StoreAddressRS));
+  bruInput.squashDetect = squashDetect;
+  memcpy(bruInput.branchRS, BranchRSModule.BranchRS, sizeof(bruInput.branchRS));
+  bpInput.squashDetect = squashDetect;
+  bpInput.cdbArbiter = cdbArbiter;
 }
 
 bool CPU::checkPRFInvariant() const {
@@ -1134,7 +1071,9 @@ void CPU::run() {
     issue();
     writeBack();
     execute();
-    AGUModule.tick(aguInput, CPUstate);  // 模块工作：AGU 一进一出（execute+writeBack）
+    AGUModule.tick(aguInput, CPUstate);  
+    BRUModule.tick(bruInput, CPUstate);  
+    BPModule.tick(bpInput, CPUstate); 
     commit();
     flush();
     decode();
@@ -1147,8 +1086,10 @@ void CPU::run() {
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);
   if (debug::enabled(debug::TOPIC_BRANCH))
-    debug::print("branch: %llu/%llu correct (%.2f%%)\n", branchCorrect,
-                 branchTotal,
-                 branchTotal ? 100.0 * branchCorrect / branchTotal : 0.0);
+    debug::print("branch: %llu/%llu correct (%.2f%%)\n", CPUstate.branchCorrect,
+                 CPUstate.branchTotal,
+                 CPUstate.branchTotal
+                     ? 100.0 * CPUstate.branchCorrect / CPUstate.branchTotal
+                     : 0.0);
   std::cout << std::dec << (REGModule.readReg(haltRd) & 0xFF) << std::endl;
 }

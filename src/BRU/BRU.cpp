@@ -1,4 +1,6 @@
 #include "../include/BRU.hpp"
+#include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <cstdint>
 
 void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
@@ -32,13 +34,18 @@ void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
 
 void BRU::push(BranchResult result) {
   for (int i = 0; i < BRU_CAP; i++)
-    if (!slotValid[i]) { outputBuffer[i] = result; slotValid[i] = true; return; }
+    if (!slotValid[i]) {
+      outputBuffer[i] = result;
+      slotValid[i] = true;
+      return;
+    }
 }
 
 int32_t BRU::headPCFrom() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].pcFrom : 0;
@@ -46,7 +53,8 @@ int32_t BRU::headPCFrom() const {
 int32_t BRU::headPCResult() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].pcResult : 0;
@@ -54,7 +62,8 @@ int32_t BRU::headPCResult() const {
 int BRU::headRobIndex() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].robIndex : -1;
@@ -62,7 +71,8 @@ int BRU::headRobIndex() const {
 uint64_t BRU::headRobSeq() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+    if (slotValid[i] &&
+        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].robSeq : 0;
@@ -97,5 +107,48 @@ void BRU::flush(uint64_t seq) {
   for (int i = 0; i < BRU_CAP; i++) {
     if (slotValid[i] && outputBuffer[i].robSeq > seq)
       slotValid[i] = false;
+  }
+}
+
+void BRU::tick(const BRUInput &input, systemState &CPUstate) 
+{
+  // BRU execute
+  if (!isFull()) {
+    int Execute_RS_index = 0xFFFFFFFF;
+    int Execute_RS_type = -1;
+    BranchReservationStation Execute_RS{};
+    bool foundAny = false;
+    for (int i = 0; i < BRANCHRS_CAP; ++i) {
+      auto rs = input.branchRS[i];
+      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
+        if (!foundAny) {
+          Execute_RS = rs;
+          Execute_RS_index = i;
+          Execute_RS_type = 0;
+          foundAny = true;
+        } else if (input.ROBModule.getSeq(rs.robIndex) <
+                   input.ROBModule.getSeq(Execute_RS.robIndex)) {
+          Execute_RS = rs;
+          Execute_RS_index = i;
+          Execute_RS_type = 0;
+        }
+      }
+    }
+    if (Execute_RS_index != 0xFFFFFFFF) {
+      uint64_t execSeq = input.ROBModule.getSeq(Execute_RS.robIndex);
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash && execSeq < input.squashDetect.SquashSeq)) {
+        CPUstate.BRUModule.BRUExecute(
+            Execute_RS.vj, Execute_RS.vk, Execute_RS.pc, Execute_RS.imm,
+            Execute_RS.op, Execute_RS.robIndex, execSeq);
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].free = true;
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qj = -1;
+        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qk = -1;
+      }
+    }
+  }
+  if (input.squashDetect.needSquash){
+    // 5. clear the wrong BRU outputBuffer
+    CPUstate.BRUModule.flush(input.squashDetect.SquashSeq);
   }
 }

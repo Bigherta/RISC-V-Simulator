@@ -125,38 +125,10 @@ void ALU::flush(uint64_t seq) {
   }
 }
 void ALU::tick(const ALUInput &input, systemState &CPUstate) {
-  // ALU execute
-  if (!isFull()) {
-    int Execute_RS_index = 0xFFFFFFFF;
-    ReservationStation Execute_RS{};
-    bool foundAny = false;
-    for (int i = 0; i < INTEGERRS_CAP; ++i) {
-      auto rs = input.IntegerRSModule.IntegerRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          foundAny = true;
-        } else if (input.ROBModule.getSeq(rs.robIndex) <
-                   input.ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-        }
-      }
-    }
-    if (Execute_RS_index != 0xFFFFFFFF) {
-      uint64_t execSeq = input.ROBModule.getSeq(Execute_RS.robIndex);
-      if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash &&
-           execSeq < input.squashDetect.SquashSeq)) {
-        CPUstate.ALUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
-                                Execute_RS.robIndex, execSeq,
-                                isControlOp(Execute_RS.op));
-        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].free = true;
-        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qj = -1;
-        CPUstate.IntegerRSModule.IntegerRS[Execute_RS_index].qk = -1;
-      }
-    }
+  if (input.dispatch.valid) {
+    auto &rs = input.RSModule.integerRS[input.dispatch.rsIndex];
+    CPUstate.ALUModule.push(rs.vj, rs.vk, rs.op, rs.robIndex,
+                            input.dispatch.robSeq, isControlOp(rs.op));
   }
   // ALU writeBack: consume this unit's own grant on the CDB result.
   if (input.cdbArbiter.valid && input.cdbArbiter.aluGranted) {

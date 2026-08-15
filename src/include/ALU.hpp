@@ -3,15 +3,14 @@
 #define ALU_HPP
 #include "common.hpp"
 #include "RS.hpp"
-#include "ROB.hpp"
 struct systemState;
 struct ALUInput {
   SquashInfo squashDetect;
-  const ROB &ROBModule;
-  const IntegerRS &IntegerRSModule;
+  const RSUnit &RSModule;
   CDBOutput cdbArbiter;
-  ALUInput(const ROB &rob, const IntegerRS &irs)
-      : ROBModule(rob), IntegerRSModule(irs){}
+  DispatchInfo dispatch;               
+  ALUInput(const RSUnit &rs)
+      : RSModule(rs) {}
 };
 class ALU {
   friend struct ReorderTester;

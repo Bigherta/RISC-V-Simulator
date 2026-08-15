@@ -1,4 +1,6 @@
 #include "../include/ROB.hpp"
+#include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <cstdint>
 #include <stdexcept>
 
@@ -60,7 +62,9 @@ void ROB::setROBCommitReady(int index) {
 
 int ROB::getPredictedPC(int index) const { return ROBqueue[index].predictedPC; }
 
-uint8_t ROB::getLsqTailSnapshot(int index) const { return ROBqueue[index].lsqTailSnapshot; }
+uint8_t ROB::getLsqTailSnapshot(int index) const {
+  return ROBqueue[index].lsqTailSnapshot;
+}
 
 int ROB::getNewPhy(int index) const { return ROBqueue[index].newPhy; }
 
@@ -75,3 +79,64 @@ int ROB::getHead() const { return head; }
 int ROB::getTail() const { return tail; }
 
 void ROB::flush(int squashIndex) { tail = (squashIndex + 1) & 0x3F; }
+
+void ROB::tick(const ROBInput &input, systemState &CPUstate) {
+  // 完成端口消费：监听三路产生者，自己置 commit-ready。
+  // 1. BRU 分支解析完成
+  if (!input.BRUModule.isEmpty()) {
+    int index = input.BRUModule.headRobIndex();
+    uint64_t brRobSeq = input.BRUModule.headRobSeq();
+    if (index >= 0 && (!input.squashDetect.needSquash ||
+                       (input.squashDetect.needSquash &&
+                        brRobSeq < input.squashDetect.SquashSeq))) {
+      CPUstate.ROBModule.setROBCommitReady(index);
+    }
+  }
+  // 2. LSQ 条目就绪（定长 8 窗口 + tail 守卫）
+  auto head = input.LSQModule.getHead();
+  auto tail = input.LSQModule.getTail();
+  for (int i = head; i != ((head + (LSQ_CAP >> 3)) & 0x3F);
+       i = (i + 1) & 0x3F) {
+    if (i == tail)
+      break;
+    if (input.LSQModule.isReadyToCommit(i)) {
+      auto lsqRobIndex = input.LSQModule.getRobIndex(i);
+      auto lsqSeq = input.LSQModule.getRobSeq(i);
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash &&
+           lsqSeq < input.squashDetect.SquashSeq)) {
+        if (!isEmpty() && lsqSeq >= headSeq()) {
+          CPUstate.ROBModule.setROBCommitReady(lsqRobIndex);
+        }
+      }
+    }
+  }
+  // 3. CDB 结果（含 JALR 控制转移解析 → flushArbiter）
+  CDBOutput cdbOut = input.cdbArbiter;
+  if (cdbOut.valid) {
+    if (!input.squashDetect.needSquash ||
+        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
+      auto robIndex = cdbOut.result.robIndex;
+      auto robSeq = cdbOut.result.robSeq;
+      auto isControl = cdbOut.result.isControl;
+      SquashInfo JumpSquash;
+      if (!isEmpty() && robSeq >= headSeq()) {
+        CPUstate.ROBModule.setROBCommitReady(robIndex);
+        if (isControl) {
+          const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+          if (pc != getPredictedPC(robIndex)) {
+            if (debug::enabled(debug::TOPIC_BRANCH))
+              debug::print("squash seq=%llu pc=%u (jalr)\n",
+                           static_cast<unsigned long long>(robSeq), pc);
+            JumpSquash.needSquash = true;
+            JumpSquash.SquashPC = pc;
+            JumpSquash.SquashIndex = robIndex;
+            JumpSquash.SquashSeq = robSeq;
+          }
+        }
+      }
+      if (JumpSquash.needSquash)
+        CPUstate.flushArbiter.receive(JumpSquash);
+    }
+  }
+}

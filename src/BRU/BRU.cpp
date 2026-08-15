@@ -1,4 +1,3 @@
-#include "../include/BRU.hpp"
 #include "../include/CPU.hpp"
 #include "../include/util.hpp"
 #include <cstdint>
@@ -111,41 +110,12 @@ void BRU::flush(uint64_t seq) {
 }
 
 void BRU::tick(const BRUInput &input, systemState &CPUstate) {
-  // BRU execute
-  if (!isFull()) {
-    int Execute_RS_index = 0xFFFFFFFF;
-    int Execute_RS_type = -1;
-    BranchReservationStation Execute_RS{};
-    bool foundAny = false;
-    for (int i = 0; i < BRANCHRS_CAP; ++i) {
-      auto rs = input.branchRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 0;
-          foundAny = true;
-        } else if (input.ROBModule.getSeq(rs.robIndex) <
-                   input.ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 0;
-        }
-      }
-    }
-    if (Execute_RS_index != 0xFFFFFFFF) {
-      uint64_t execSeq = input.ROBModule.getSeq(Execute_RS.robIndex);
-      if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash &&
-           execSeq < input.squashDetect.SquashSeq)) {
-        CPUstate.BRUModule.BRUExecute(
-            Execute_RS.vj, Execute_RS.vk, Execute_RS.pc, Execute_RS.imm,
-            Execute_RS.op, Execute_RS.robIndex, execSeq);
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].free = true;
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qj = -1;
-        CPUstate.BranchRSModule.BranchRS[Execute_RS_index].qk = -1;
-      }
-    }
+  // 段1：消费派发总线（select 已在 DispatchArbiter 快照边求值；
+  // RS 槽位释放由 RSUnit.tick 自理）
+  if (input.dispatch.valid) {
+    auto &rs = input.RSModule.branchRS[input.dispatch.rsIndex];
+    CPUstate.BRUModule.BRUExecute(rs.vj, rs.vk, rs.pc, rs.imm, rs.op,
+                                  rs.robIndex, input.dispatch.robSeq);
   }
   // BRU writeBack
   SquashInfo BranchSquash;
@@ -168,7 +138,6 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate) {
         BranchSquash.SquashIndex = index;
         BranchSquash.SquashSeq = brRobSeq;
       }
-      CPUstate.ROBModule.setROBCommitReady(index);
     }
     CPUstate.BRUModule.remove(brRobSeq);
   }

@@ -1,4 +1,6 @@
 #include "../include/PRF.hpp"
+#include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
@@ -48,4 +50,55 @@ int32_t PRF::getValue(int index) const { return PhysicalRegs[index].value; }
 void PRF::write(int index, int32_t value) {
   PhysicalRegs[index].ready = true;
   PhysicalRegs[index].value = value;
+}
+
+void PRF::tick(const PRFInput &input, systemState &CPUstate) {
+  // 写回端口消费：监听两路产生者，自己写值。
+  // 注意双写：lsqGranted 的 load 条目同时满足 isReadyToCommit 与 CDBDetect——
+  // 两路会写同一 phy，但值恒相同（CDB 的 result.value == LSQ.getValue(同一条目)），
+  // 幂等无冲突（与原 LSQ ready 广播 + CDB 消费双写行为一致）。
+  auto head = input.LSQModule.getHead();
+  auto tail = input.LSQModule.getTail();
+  for (int i = head; i != ((head + (LSQ_CAP >> 3)) & 0x3F);
+       i = (i + 1) & 0x3F) {
+    if (i == tail)
+      break;
+    if (input.LSQModule.isReadyToCommit(i)) {
+      auto lsqRobIndex = input.LSQModule.getRobIndex(i);
+      auto lsqSeq = input.LSQModule.getRobSeq(i);
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash && lsqSeq < input.squashDetect.SquashSeq)) {
+        if (!input.ROBModule.isEmpty() && lsqSeq >= input.ROBModule.headSeq()) {
+          int newPhy = input.ROBModule.getNewPhy(lsqRobIndex);
+          if (newPhy >= 0) {
+            CPUstate.PRFModule.write(newPhy, input.LSQModule.getValue(i));
+            if (debug::enabled(debug::TOPIC_PRF))
+              debug::print("PRF write P%d = %d (lsq)\n", newPhy,
+                           input.LSQModule.getValue(i));
+          }
+        }
+      }
+    }
+  }
+  CDBOutput cdbOut = input.cdbArbiter;
+  if (cdbOut.valid) {
+    if (!input.squashDetect.needSquash ||
+        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
+      auto robIndex = cdbOut.result.robIndex;
+      auto isControl = cdbOut.result.isControl;
+      if (!isControl) {
+        auto value = cdbOut.result.value;
+        int newPhy = input.ROBModule.getNewPhy(robIndex);
+        if (newPhy >= 0) {
+          CPUstate.PRFModule.write(newPhy, value);
+          if (debug::enabled(debug::TOPIC_PRF)) {
+            debug::print("PRF write P%d = %d (cdb)\n", newPhy, value);
+            if (isReady(newPhy) && getValue(newPhy) != value)
+              debug::print("PRF mismatch P%d: rob=%d prf=%d\n", newPhy, value,
+                           getValue(newPhy));
+          }
+        }
+      }
+    }
+  }
 }

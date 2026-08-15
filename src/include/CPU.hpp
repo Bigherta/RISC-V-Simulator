@@ -22,11 +22,7 @@
 #include <cstring>
 
 struct systemState {
-  IntegerRS IntegerRSModule;
-  StoreAddressRS StoreAddressRSModule;
-  StoreValueRS StoreValueRSModule;
-  LoadRS LoadRSModule;
-  BranchRS BranchRSModule;
+  RSUnit RSModule;
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
@@ -34,7 +30,7 @@ struct systemState {
   BRU BRUModule;
   LSQ LSQModule;
   FetchQueue FQModule;
-  InstructQueue IQModule;
+  DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
@@ -56,11 +52,7 @@ private:
   systemState CPUstate;
   IMEM InstructMem;
   friend struct ReorderTester;
-  IntegerRS IntegerRSModule;
-  StoreAddressRS StoreAddressRSModule;
-  StoreValueRS StoreValueRSModule;
-  LoadRS LoadRSModule;
-  BranchRS BranchRSModule;
+  RSUnit RSModule;
   RegCluster REGModule;
   ROB ROBModule;
   ALU ALUModule;
@@ -68,7 +60,7 @@ private:
   BRU BRUModule;
   LSQ LSQModule;
   FetchQueue FQModule;
-  InstructQueue IQModule;
+  DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
@@ -76,14 +68,17 @@ private:
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
   CDB CDBModule;
-  AGUInput aguInput{ROBModule, LSQModule};
-  ALUInput aluInput{ROBModule, IntegerRSModule};
-  BRUInput bruInput{ROBModule};
+  AGUInput aguInput{LSQModule, RSModule};
+  ALUInput aluInput{RSModule};
+  BRUInput bruInput{ROBModule, RSModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
   DMEMInput dmemInput{LSQModule};
-  CDBInput cdbInput{ROBModule, LSQModule, IntegerRSModule, LoadRSModule,
-                    StoreAddressRSModule, StoreValueRSModule, BranchRSModule,
-                    PRFModule};
+  CDBInput cdbInput{ROBModule, LSQModule, RSModule, PRFModule};
+  DecodeInput decodeInput{FQModule};
+  LSQInput lsqInput{AGUModule, RSModule, ROBModule, DMEMModule};
+  RSInput rsInput{ROBModule};
+  ROBInput robInput{BRUModule, LSQModule};
+  PRFInput prfInput{LSQModule, ROBModule};
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;
@@ -95,7 +90,6 @@ public:
   CPU(Memory mem);
   void read();
   void fetch();
-  void decode();
   void issue();
   int issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
                       bool isControl);
@@ -104,7 +98,6 @@ public:
   int issue_Store(const Uop &inst, int n_bytes);
   int issue_B(const Uop &inst);
   static Operation decodeOp(const Uop &inst);
-  void execute();
   CDBBypassResult CDBBypass(int robIndex) const;
   void commit();
   void flush();

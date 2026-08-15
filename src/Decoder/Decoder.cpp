@@ -1,4 +1,5 @@
 #include "../include/Decoder.hpp"
+#include "../include/CPU.hpp"
 #include <cstring>
 
 Uop Decoder::decode(int32_t raw_inst) {
@@ -116,4 +117,21 @@ uint8_t InstructQueue::getTail() const{
 void InstructQueue::clear(){
   std::memset(this, 0, sizeof(*this));
   head = tail = 0;
+}
+
+void DecodeUnit::tick(const DecodeInput &input, systemState &CPUstate){
+  if (input.squashDetect.needSquash) {
+    CPUstate.DecodeUnitModule.clear();
+    return;
+  }
+  if (input.FQModule.isEmpty() || isFull())
+    return;
+  auto raw = input.FQModule.headRaw();
+  Uop uop = Decoder::decode(static_cast<int32_t>(raw));
+  uop.pc = input.FQModule.headpc();
+  uop.predictedPC = input.FQModule.headPredictedPC();
+  uop.BPSnapshot = input.FQModule.headBPSnapshot();
+  uop.isHalt = (raw == 0x0ff00513);
+  CPUstate.DecodeUnitModule.push(uop);
+  CPUstate.FQModule.pop();
 }

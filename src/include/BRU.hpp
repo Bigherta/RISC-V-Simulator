@@ -1,16 +1,15 @@
 #pragma once
 #include <cstdint>
-#ifndef BRU_HPP
-#define BRU_HPP
 #include "common.hpp"
 #include "RS.hpp"
-#include "ROB.hpp"
 struct systemState;
 struct BRUInput {
-  BranchReservationStation branchRS[BRANCHRS_CAP];
   SquashInfo squashDetect;
   const ROB &ROBModule;
-  BRUInput(const ROB &rob) : ROBModule(rob) {}
+  const RSUnit &RSModule;
+  DispatchInfo dispatch;                
+  BRUInput(const ROB &rob, const RSUnit &rs)
+      : ROBModule(rob), RSModule(rs) {}
 };
 class BRU {
   friend struct ReorderTester;
@@ -33,4 +32,3 @@ public:
   bool isValid(int index) const { return slotValid[index]; }
   void tick(const BRUInput&, systemState&);
 };
-#endif // BRU_HPP

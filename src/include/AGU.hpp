@@ -3,16 +3,15 @@
 #define AGU_HPP
 #include "common.hpp"
 #include "RS.hpp"
-#include "ROB.hpp"
 #include "LSQ.hpp"
 struct systemState;
 struct AGUInput {
-  ReservationStation LoadRS[LOADRS_CAP];
-  ReservationStation StoreAddressRS[STORERS_CAP];
   SquashInfo squashDetect;
-  const ROB &ROBModule;
   const LSQ &LSQModule;
-  AGUInput(const ROB &rob, const LSQ &lsq) : ROBModule(rob), LSQModule(lsq) {}
+  const RSUnit &RSModule;
+  DispatchInfo dispatch;              
+  AGUInput(const LSQ &lsq, const RSUnit &rs)
+      : LSQModule(lsq), RSModule(rs) {}
 };
 class AGU {
   friend struct ReorderTester;

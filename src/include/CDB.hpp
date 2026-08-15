@@ -9,19 +9,11 @@ struct CDBInput {
   SquashInfo squashDetect;
   const ROB &ROBModule;
   const LSQ &LSQModule;
-  const IntegerRS &IntegerRSModule;
-  const LoadRS &LoadRSModule;
-  const StoreAddressRS &StoreAddressRSModule;
-  const StoreValueRS &StoreValueRSModule;
-  const BranchRS &BranchRSModule;
+  const RSUnit &RSModule;
   const PRF &PRFModule;
   CDBOutput cdbArbiter;
-  CDBInput(const ROB &rob, const LSQ &lsq, const IntegerRS &irs,
-           const LoadRS &lrs, const StoreAddressRS &sars,
-           const StoreValueRS &svrs, const BranchRS &brs, const PRF &prf)
-      : ROBModule(rob), LSQModule(lsq), IntegerRSModule(irs), LoadRSModule(lrs),
-        StoreAddressRSModule(sars), StoreValueRSModule(svrs),
-        BranchRSModule(brs), PRFModule(prf) {}
+  CDBInput(const ROB &rob, const LSQ &lsq, const RSUnit &rs, const PRF &prf)
+      : ROBModule(rob), LSQModule(lsq), RSModule(rs), PRFModule(prf) {}
 };
 class CDB {
 public:

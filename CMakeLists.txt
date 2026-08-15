@@ -9,6 +9,7 @@ set(CPU_SOURCES
     src/Decoder/Decoder.cpp
     src/DMEM/DMEM.cpp
     src/ROB/ROB.cpp
+    src/RS/RS.cpp
     src/ALU/ALU.cpp
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp

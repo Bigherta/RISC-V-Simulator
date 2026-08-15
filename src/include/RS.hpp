@@ -29,64 +29,27 @@ struct BranchReservationStation : public ReservationStation {
   BranchReservationStation() : ReservationStation() {}
   BranchReservationStation(Operation type) : ReservationStation(type) {}
 };
-
-struct IntegerRS {
-  ReservationStation IntegerRS[INTEGERRS_CAP];
-  bool isIntegerRSFull() const {
-    for (auto IntegerRS : IntegerRS) {
-      if (IntegerRS.free) {
-        return false;
-      }
-    }
-    return true;
-  }
+struct ROB;
+struct systemState;
+struct RSInput {
+  SquashInfo squashDetect;
+  const ROB &ROBModule;        
+  DispatchBus dispatchBus;              // 派发释放（read() 填充，快照边求值）
+  RSInput(const ROB &rob) : ROBModule(rob) {}
 };
-
-struct StoreAddressRS {
-  ReservationStation StoreAddressRS[STORERS_CAP];
-  bool isStoreAddressRSFull() const {
-    for (auto StoreAddressRS : StoreAddressRS) {
-      if (StoreAddressRS.free) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-
-struct StoreValueRS {
-  StoreValueReservationStation StoreValueRS[STORERS_CAP];
-  bool isStoreValueRSFull() const {
-    for (auto StoreValueRS : StoreValueRS) {
-      if (StoreValueRS.free) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-
-struct LoadRS {
-  ReservationStation LoadRS[LOADRS_CAP];
-  bool isLoadRSFull() const {
-    for (auto LoadRS : LoadRS) {
-      if (LoadRS.free) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-
-struct BranchRS {
-  BranchReservationStation BranchRS[BRANCHRS_CAP];
-  bool isBranchRSFull() const {
-    for (auto BranchRS : BranchRS) {
-      if (BranchRS.free) {
-        return false;
-      }
-    }
-    return true;
-  }
+class RSUnit {
+  friend struct ReorderTester;
+public:                           
+  ReservationStation integerRS[INTEGERRS_CAP];
+  ReservationStation loadRS[LOADRS_CAP];
+  ReservationStation storeAddressRS[STORERS_CAP];
+  StoreValueReservationStation storeValueRS[STORERS_CAP];
+  BranchReservationStation branchRS[BRANCHRS_CAP];
+  int tryAllocInteger() const;
+  int tryAllocLoad() const;
+  int tryAllocStoreAddress() const;
+  int tryAllocStoreValue() const;
+  int tryAllocBranch() const;
+  void tick(const RSInput&, systemState&);  
 };
 #endif // RS_HPP

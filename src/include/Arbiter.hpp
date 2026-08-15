@@ -1,8 +1,10 @@
 #pragma once
-#include <cstdint>
-#ifndef ARBITER_HPP
-#define ARBITER_HPP
+#include "AGU.hpp"
+#include "ALU.hpp"
+#include "BRU.hpp"
+#include "RS.hpp"
 #include "common.hpp"
+#include <cstdint>
 struct FlushRequest {
   SquashInfo requestArgs;
   bool valid;
@@ -34,4 +36,10 @@ public:
                              const CDBCandidate &lsqCandidate,
                              const SquashInfo &squash);
 };
-#endif // ARBITER_HPP
+
+class DispatchArbiter {
+public:
+  static DispatchBus arbitrate(const RSUnit &RS, const ALU &ALU, const AGU &AGU,
+                               const BRU &BRU, const ROB &ROB,
+                               const SquashInfo &squash);
+};

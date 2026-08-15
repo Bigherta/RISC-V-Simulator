@@ -74,83 +74,20 @@ void AGU::flush(uint64_t seq) {
   }
 }
 void AGU::tick(const AGUInput &input, systemState &CPUstate) {
-  // AGU execute
-  if (!isFull()) {
-    int Execute_RS_index = 0xFFFFFFFF;
-    int Execute_RS_type = -1;
-    ReservationStation Execute_RS{};
-    bool foundAny = false;
-    for (int i = 0; i < LOADRS_CAP; ++i) {
-      auto rs = input.LoadRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 1;
-          foundAny = true;
-        } else if (input.ROBModule.getSeq(rs.robIndex) <
-                   input.ROBModule.getSeq(Execute_RS.robIndex)){
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 1;
-        }
-      }
-    }
-    for (int i = 0; i < STORERS_CAP; ++i) {
-      auto rs = input.StoreAddressRS[i];
-      if (!rs.free && rs.qj == -1) {
-        if (!foundAny) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 2;
-          foundAny = true;
-        } else if (input.ROBModule.getSeq(rs.robIndex) <
-                   input.ROBModule.getSeq(Execute_RS.robIndex)) {
-          Execute_RS = rs;
-          Execute_RS_index = i;
-          Execute_RS_type = 2;
-        }
-      }
-    }
-    if (Execute_RS_index != 0xFFFFFFFF) {
-      uint64_t execSeq = input.ROBModule.getSeq(Execute_RS.robIndex);
-      if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash &&
-           execSeq < input.squashDetect.SquashSeq)) {
-        CPUstate.AGUModule.push(Execute_RS.vj, Execute_RS.vk, Execute_RS.op,
-                                Execute_RS.robIndex, execSeq);
-        if (Execute_RS_type == 1) {
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].free = true;
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qj = -1;
-          CPUstate.LoadRSModule.LoadRS[Execute_RS_index].qk = -1;
-        } else {
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].free =
-              true;
-          CPUstate.StoreAddressRSModule.StoreAddressRS[Execute_RS_index].qj =
-              -1;
-        }
-      }
+  if (input.dispatch.valid) {
+    if (input.dispatch.rsType == RSType::Load) {
+      auto &rs = input.RSModule.loadRS[input.dispatch.rsIndex];
+      CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op, rs.robIndex,
+                              input.dispatch.robSeq);
+    } else {
+      auto &rs = input.RSModule.storeAddressRS[input.dispatch.rsIndex];
+      CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op, rs.robIndex,
+                              input.dispatch.robSeq);
     }
   }
-  // AGU writeBack: address result -> LSQ directly
+  // AGU remove the first entry every cycle
   if (!isEmpty()) {
-    auto aguRobSeq = headRobSeq();
-    if (!input.squashDetect.needSquash ||
-        (input.squashDetect.needSquash &&
-         aguRobSeq < input.squashDetect.SquashSeq)) {
-      auto index = input.LSQModule.getIndexBySeq(aguRobSeq);
-      if (index >= 0) {
-        auto value = headValue();
-        auto plan = input.LSQModule.planAddressForward(index, value);
-        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), index);
-        CPUstate.LSQModule.applyStoreToLoadForward(plan);
-        if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("AGU addr seq=%llu -> LSQ[%d] = %u\n",
-                       static_cast<unsigned long long>(aguRobSeq), index,
-                       static_cast<uint32_t>(value));
-      }
-    }
-    CPUstate.AGUModule.remove(aguRobSeq);
+    CPUstate.AGUModule.remove(headRobSeq());
   }
   // clear the wrong AGU buffer
   if (input.squashDetect.needSquash) {

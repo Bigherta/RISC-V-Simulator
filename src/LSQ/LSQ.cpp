@@ -1,4 +1,6 @@
 #include "../include/LSQ.hpp"
+#include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -233,4 +235,111 @@ bool LSQ::isReadyToCommit(int index) const {
     return true;
   }
   return false;
+}
+
+void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
+  for (int i = 0; i < STORERS_CAP; ++i) {
+    if (!input.RSModule.storeValueRS[i].free &&
+        input.RSModule.storeValueRS[i].qrs2 == -1) {
+      uint64_t Seq =
+          input.ROBModule.getSeq(input.RSModule.storeValueRS[i].robIndex);
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash &&
+           Seq < input.squashDetect.SquashSeq)) {
+        auto index = getIndexBySeq(Seq);
+        if (index >= 0) {
+          auto plan =
+              planDataForward(index, input.RSModule.storeValueRS[i].vrs2);
+          if (debug::enabled(debug::TOPIC_LSQ))
+            debug::print("LSQ store value seq=%llu -> LSQ[%d] = %d\n",
+                         static_cast<unsigned long long>(Seq), index,
+                         input.RSModule.storeValueRS[i].vrs2);
+          CPUstate.LSQModule.writeValue(input.RSModule.storeValueRS[i].vrs2,
+                                        index);
+          CPUstate.LSQModule.applyStoreToLoadForward(plan);
+        }
+        CPUstate.RSModule.storeValueRS[i].free = true;
+        CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
+      }
+    }
+  }
+  bool memBusy = input.DMEMModule.isBusy();
+  bool storeDispatched = false;
+  if (!memBusy && !isEmpty() && !isHeadLoad()) {
+    auto storeSeq = headRobSeq();
+    bool committed =
+        input.ROBModule.isEmpty() || storeSeq < input.ROBModule.headSeq();
+    bool atHeadReady = !committed &&
+                       getRobIndex(getHead()) == input.ROBModule.getHead() &&
+                       input.ROBModule.isCommitReadyAt(getRobIndex(getHead()));
+    if (committed || atHeadReady) {
+      MemRequest newRequest{};
+      newRequest.address = getAddress(getHead());
+      newRequest.value = getValue(getHead());
+      newRequest.isSigned = !getIsUnsigned(getHead());
+      newRequest.n_bytes = getNBytes(getHead());
+      newRequest.op = Operation::Store;
+      newRequest.robIndex = getRobIndex(getHead());
+      newRequest.robSeq = storeSeq;
+      if (CPUstate.DMEMModule.MemPush(newRequest)) {
+        if (debug::enabled(debug::TOPIC_LSQ))
+          debug::print("LSQ store dispatch seq=%llu @%u <- %d\n",
+                       static_cast<unsigned long long>(newRequest.robSeq),
+                       newRequest.address, newRequest.value);
+        if (debug::enabled(debug::TOPIC_MEM))
+          debug::print("MEM store @%u <- %d\n", newRequest.address,
+                       newRequest.value);
+        storeDispatched = true;
+        memBusy = true;
+      }
+    }
+  }
+  auto loadIndex = LoadDetect();
+  if (loadIndex != 0xFFFFFFFF && !memBusy) {
+    MemRequest newRequest{};
+    newRequest.address = getAddress(loadIndex);
+    newRequest.isSigned = !getIsUnsigned(loadIndex);
+    newRequest.n_bytes = getNBytes(loadIndex);
+    newRequest.op = Operation::Load;
+    newRequest.robIndex = getRobIndex(loadIndex);
+    newRequest.robSeq = getRobSeq(loadIndex);
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         newRequest.robSeq < input.squashDetect.SquashSeq)) {
+      if (CPUstate.DMEMModule.MemPush(newRequest)) {
+        if (debug::enabled(debug::TOPIC_LSQ))
+          debug::print("LSQ load dispatch seq=%llu @%u\n",
+                       static_cast<unsigned long long>(newRequest.robSeq),
+                       newRequest.address);
+        CPUstate.LSQModule.setValueState(loadIndex, ValueState::FETCHING);
+      }
+    }
+  }
+  uint8_t cur = getHead();
+  bool retireLoad =
+      !input.squashDetect.needSquash && cur != getTail() && isHeadLoad() &&
+      (input.ROBModule.isEmpty() || headRobSeq() < input.ROBModule.headSeq());
+  (storeDispatched || retireLoad) ? CPUstate.LSQModule.pop() : void();
+
+  // LSQ receive the value from AGU
+  if (!input.AGUModule.isEmpty()) {
+    auto aguRobSeq = input.AGUModule.headRobSeq();
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         aguRobSeq < input.squashDetect.SquashSeq)) {
+      auto index = getIndexBySeq(aguRobSeq);
+      if (index >= 0) {
+        auto value = input.AGUModule.headValue();
+        auto plan = planAddressForward(index, value);
+        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), index);
+        CPUstate.LSQModule.applyStoreToLoadForward(plan);
+      }
+    }
+  }
+
+  // clear the wrong LSQ (only on squash; SquashIndex is -1 otherwise)
+  if (input.squashDetect.needSquash) {
+    CPUstate.LSQModule.flush(
+        input.ROBModule.getLsqTailSnapshot(input.squashDetect.SquashIndex));
+  }
 }

@@ -32,7 +32,20 @@ struct LSQStoreToLoadForwardPlan {
   LSQWrite writes[LSQ_CAP];
   uint8_t count;
 };
-
+struct systemState;
+struct AGU;
+struct RSUnit;
+struct ROB;
+struct DMEM;
+struct LSQInput {
+  SquashInfo squashDetect;
+  const AGU &AGUModule;
+  const RSUnit &RSModule;                       
+  const ROB &ROBModule;                     
+  const DMEM &DMEMModule;                   
+  LSQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem)
+      : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem) {}
+};
 class LSQ {
   friend struct ReorderTester;
 private:
@@ -73,6 +86,7 @@ public:
   int CDBDetect() const;
   int LoadDetect() const;
   void flush(uint8_t tailSnapshot);
+  void tick(const LSQInput&, systemState&);
 };
 
 #endif // LSQ_HPP

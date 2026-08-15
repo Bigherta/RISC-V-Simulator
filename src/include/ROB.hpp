@@ -1,6 +1,6 @@
 #pragma once
-#ifndef ROB_HPP
-#define ROB_HPP
+#include "BRU.hpp"
+#include "LSQ.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -22,12 +22,22 @@ struct ROBEntry {
   Checkpoint ckpt{};
   int newPhy = -1;
   int oldPhy = -1;
-  ROBEntry() { std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF, sizeof(ckpt.RATsnapshot.RAT_snapshot)); }
+  ROBEntry() {
+    std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF,
+                sizeof(ckpt.RATsnapshot.RAT_snapshot));
+  }
   ROBEntry(ROBType type_) : type(type_) {
-    std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF, sizeof(ckpt.RATsnapshot.RAT_snapshot));
+    std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF,
+                sizeof(ckpt.RATsnapshot.RAT_snapshot));
   }
 };
-
+struct ROBInput {
+  SquashInfo squashDetect;
+  CDBOutput cdbArbiter;
+  const BRU &BRUModule;
+  const LSQ &LSQModule;
+  ROBInput(const BRU &bru, const LSQ &lsq) : BRUModule(bru), LSQModule(lsq) {}
+};
 class ROB {
   friend struct ReorderTester;
   friend struct Reorder720Tester;
@@ -63,5 +73,5 @@ public:
   int getOldPhy(int index) const;
   void setROBCommitReady(int index);
   void flush(int squashIndex);
+  void tick(const ROBInput &, systemState &);
 };
-#endif // ROB_HPP

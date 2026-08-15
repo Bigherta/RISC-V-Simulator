@@ -154,4 +154,13 @@ struct Uop {
   int32_t predictedPC = 0;
   BranchPredictorSnapshot BPSnapshot{};
 };
+enum class RSType { Integer, Branch, Load, StoreAddr };
+struct DispatchInfo {
+  bool valid = false;
+  int rsIndex = -1;
+  int robIndex = -1;
+  uint64_t robSeq = 0;
+  RSType rsType = RSType::Integer;
+};
+struct DispatchBus { DispatchInfo alu, agu, bru; };
 #endif // COMMON_HPP

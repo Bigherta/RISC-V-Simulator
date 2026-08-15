@@ -1,6 +1,4 @@
 #include "../include/Arbiter.hpp"
-#include "../include/ALU.hpp"
-#include "../include/LSQ.hpp"
 #include <cstring>
 #include <stdexcept>
 
@@ -54,31 +52,20 @@ void FlushArbiter::clear(uint64_t seq) {
 
 FlushRequest FlushArbiter::getRequest(int i) const { return requests[i]; }
 
-CDBOutput CDBArbiter::arbitrate(const ALU &ALUModule, const LSQ &LSQModule,
+CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
+                                const CDBCandidate &lsqCandidate,
                                 const SquashInfo &squash) {
   bool needSquash = squash.needSquash;
   uint64_t squashSeq = squash.SquashSeq;
-  bool aluValid = !ALUModule.isEmpty();
-  ArithmeticCalculateResult aluResult{};
-  if (aluValid) {
-    aluResult.value = ALUModule.headValue();
-    aluResult.robIndex = ALUModule.headRobIndex();
-    aluResult.robSeq = ALUModule.headRobSeq();
-    aluResult.isControl = ALUModule.headIsControl();
-    if (needSquash && aluResult.robSeq > squashSeq)
-      aluValid = false;
-  }
+  bool aluValid = aluCandidate.valid;
+  ArithmeticCalculateResult aluResult = aluCandidate.result;
+  if (aluValid && needSquash && aluResult.robSeq > squashSeq)
+    aluValid = false;
 
-  auto lsqCDBDetect = LSQModule.CDBDetect();
-  bool lsqValid = lsqCDBDetect != -1;
-  ArithmeticCalculateResult lsqResult{};
-  if (lsqValid) {
-    lsqResult.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
-    lsqResult.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
-    lsqResult.value = LSQModule.getValue(lsqCDBDetect);
-    if (needSquash && lsqResult.robSeq > squashSeq)
-      lsqValid = false;
-  }
+  bool lsqValid = lsqCandidate.valid;
+  ArithmeticCalculateResult lsqResult = lsqCandidate.result;
+  if (lsqValid && needSquash && lsqResult.robSeq > squashSeq)
+    lsqValid = false;
   CDBOutput out = {};
 
   if (!aluValid && !lsqValid)

@@ -1,19 +1,22 @@
 #pragma once
 #ifndef CPU_HPP
 #define CPU_HPP
-#include "ALU.hpp"
 #include "AGU.hpp"
+#include "ALU.hpp"
 #include "Arbiter.hpp"
 #include "BRU.hpp"
+#include "BranchPredictor.hpp"
+#include "CDB.hpp"
+#include "DMEM.hpp"
 #include "Decoder.hpp"
 #include "FetchQueue.hpp"
+#include "IMEM.hpp"
 #include "LSQ.hpp"
-#include "PRF.hpp"
 #include "Memory.hpp"
+#include "PRF.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "Register.hpp"
-#include "BranchPredictor.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -33,7 +36,8 @@ struct systemState {
   FetchQueue FQModule;
   InstructQueue IQModule;
   PRF PRFModule;
-  Memory DataMem;
+  DMEM DMEMModule;
+  IMEM IMEMModule;
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   uint32_t programCounter;
@@ -44,13 +48,13 @@ struct systemState {
   uint64_t branchCorrect = 0;
 
   systemState() : programCounter(0) {}
-  systemState(Memory mem) : DataMem(mem), programCounter(0) {}
+  systemState(Memory mem) : DMEMModule(mem), programCounter(0) {}
 };
 
 class CPU {
 private:
   systemState CPUstate;
-  Memory InstructMem;
+  IMEM InstructMem;
   friend struct ReorderTester;
   IntegerRS IntegerRSModule;
   StoreAddressRS StoreAddressRSModule;
@@ -66,13 +70,20 @@ private:
   FetchQueue FQModule;
   InstructQueue IQModule;
   PRF PRFModule;
-  Memory DataMem;
+  DMEM DMEMModule;
+  IMEM IMEMModule;
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
+  CDB CDBModule;
   AGUInput aguInput{ROBModule, LSQModule};
+  ALUInput aluInput{ROBModule, IntegerRSModule};
   BRUInput bruInput{ROBModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
+  DMEMInput dmemInput{LSQModule};
+  CDBInput cdbInput{ROBModule, LSQModule, IntegerRSModule, LoadRSModule,
+                    StoreAddressRSModule, StoreValueRSModule, BranchRSModule,
+                    PRFModule};
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;
@@ -94,8 +105,6 @@ public:
   int issue_B(const Uop &inst);
   static Operation decodeOp(const Uop &inst);
   void execute();
-  void writeBack();
-  void CDBBroadcast(int robIndex, int value);
   CDBBypassResult CDBBypass(int robIndex) const;
   void commit();
   void flush();

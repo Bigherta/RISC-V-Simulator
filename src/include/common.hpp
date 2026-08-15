@@ -24,6 +24,7 @@ constexpr int LOCAL_HISTORY_BIT = 8;
 constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 128;
 constexpr int PRF_CAP = 128;
+constexpr int IMEM_CAP = 4;
 enum class Operation {
   ADD,
   SUB,

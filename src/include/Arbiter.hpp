@@ -3,11 +3,14 @@
 #ifndef ARBITER_HPP
 #define ARBITER_HPP
 #include "common.hpp"
-struct ALU;
-struct LSQ;
 struct FlushRequest {
   SquashInfo requestArgs;
   bool valid;
+};
+
+struct CDBCandidate {
+  bool valid = false;
+  ArithmeticCalculateResult result{};
 };
 
 class FlushArbiter {
@@ -24,7 +27,11 @@ public:
 
 class CDBArbiter {
 public:
-  static CDBOutput arbitrate(const ALU &ALUModule, const LSQ &LSQModule,
+  // arbitrate between the two CDB candidates (ALU result / LSQ load value).
+  // Candidates are plain data collected from the module snapshots in read();
+  // the arbiter itself does not know the producers.
+  static CDBOutput arbitrate(const CDBCandidate &aluCandidate,
+                             const CDBCandidate &lsqCandidate,
                              const SquashInfo &squash);
 };
 #endif // ARBITER_HPP

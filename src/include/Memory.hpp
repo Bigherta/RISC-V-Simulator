@@ -1,44 +1,59 @@
 #pragma once
 #ifndef MEMORY_HPP
 #define MEMORY_HPP
-#include "common.hpp"
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 
 static constexpr uint32_t MEM_SIZE = 256 * 1024;
 
+// Base class shared by IMEM (instruction memory) and DMEM (data memory).
+// It owns only the byte-addressable storage array and the functions that
+// operate on raw memory bytes. All pipeline state (busy/buffer/request
+// tracking) belongs to the concrete DMEM/IMEM modules.
 class Memory {
-private:
+protected:
   uint8_t* mem;
-  bool busy = false;
-  bool bufferValid = false;
-  MemRequest MemExecution;
-  MemRequest MemOutputBuffer;
 
 public:
   Memory() : mem(new uint8_t[MEM_SIZE]()) {}
   ~Memory() { delete[] mem; }
-  Memory(const Memory& other)
-    : mem(new uint8_t[MEM_SIZE]), busy(other.busy), bufferValid(other.bufferValid),
-      MemExecution(other.MemExecution), MemOutputBuffer(other.MemOutputBuffer) {
+  Memory(const Memory& other) : mem(new uint8_t[MEM_SIZE]) {
     std::memcpy(mem, other.mem, MEM_SIZE);
   }
   Memory& operator=(const Memory& other) {
     if (this != &other) {
       std::memcpy(mem, other.mem, MEM_SIZE);
-      busy = other.busy; bufferValid = other.bufferValid;
-      MemExecution = other.MemExecution; MemOutputBuffer = other.MemOutputBuffer;
     }
     return *this;
   }
 
-  void snapshotFrom(const Memory& other) {
-    busy = other.busy; bufferValid = other.bufferValid;
-    MemExecution = other.MemExecution; MemOutputBuffer = other.MemOutputBuffer;
+  void load_ins() {
+    while (!std::cin.eof()) {
+      char sign = std::cin.get();
+      if (sign == EOF) {
+        return;
+      }
+      if (sign == '@') {
+        char hex_address[9];
+        std::cin >> hex_address;
+        uint32_t cur_address = hex2uint32(8, hex_address);
+        char hex_byte[3];
+        while (std::cin >> hex_byte) {
+          write_data(cur_address++, hex2uint32(2, hex_byte));
+          while (std::cin.peek() == '\n' || std::cin.peek() == ' ') {
+            std::cin.get();
+          }
+          if (std::cin.peek() == '@')
+            break;
+        }
+      }
+    }
   }
-  void load_ins();
+
   inline uint32_t hex2uint32(int len, char hex[]);
+  
   uint8_t read_data(uint32_t addr) const {
     if (addr >= MEM_SIZE)
       throw std::runtime_error("Memory read out of bounds");
@@ -49,15 +64,6 @@ public:
       throw std::runtime_error("Memory write out of bounds");
     mem[addr] = data;
   }
-  int32_t load_n_bytes(uint32_t address, int n, bool isSigned);
-  void store_n_bytes(uint32_t address, int value, int n);
-  bool MemPush(MemRequest request);
-  void MemPull();
-  void execute();
-  MemRequest MemReturn() const;
-  MemRequest MemExecutionState() const;
-  bool isBusy() const;
-  bool isReady() const;
   bool operator==(const Memory &other) const {
     return std::memcmp(mem, other.mem, MEM_SIZE) == 0;
   }

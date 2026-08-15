@@ -7,11 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CPU_SOURCES
     src/CPU/CPU.cpp
     src/Decoder/Decoder.cpp
-    src/Memory/Memory.cpp
+    src/DMEM/DMEM.cpp
     src/ROB/ROB.cpp
     src/ALU/ALU.cpp
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp
+    src/CDB/CDB.cpp
     src/Arbiter/Arbiter.cpp
     src/LSQ/LSQ.cpp
     src/Register/Register.cpp

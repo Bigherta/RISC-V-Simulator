@@ -2,6 +2,17 @@
 #ifndef ALU_HPP
 #define ALU_HPP
 #include "common.hpp"
+#include "RS.hpp"
+#include "ROB.hpp"
+struct systemState;
+struct ALUInput {
+  SquashInfo squashDetect;
+  const ROB &ROBModule;
+  const IntegerRS &IntegerRSModule;
+  CDBOutput cdbArbiter;
+  ALUInput(const ROB &rob, const IntegerRS &irs)
+      : ROBModule(rob), IntegerRSModule(irs){}
+};
 class ALU {
   friend struct ReorderTester;
 private:
@@ -19,5 +30,6 @@ public:
   uint64_t headRobSeq() const;
   bool headIsControl() const;
   bool isValid(int index) const { return slotValid[index]; }
+  void tick(const ALUInput&, systemState&);
 };
 #endif // ALU_HPP

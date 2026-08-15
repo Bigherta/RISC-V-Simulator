@@ -152,8 +152,8 @@ void AGU::tick(const AGUInput &input, systemState &CPUstate) {
     }
     CPUstate.AGUModule.remove(aguRobSeq);
   }
+  // clear the wrong AGU buffer
   if (input.squashDetect.needSquash) {
-
     CPUstate.AGUModule.flush(input.squashDetect.SquashSeq);
   }
 }

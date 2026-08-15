@@ -110,8 +110,7 @@ void BRU::flush(uint64_t seq) {
   }
 }
 
-void BRU::tick(const BRUInput &input, systemState &CPUstate) 
-{
+void BRU::tick(const BRUInput &input, systemState &CPUstate) {
   // BRU execute
   if (!isFull()) {
     int Execute_RS_index = 0xFFFFFFFF;
@@ -137,7 +136,8 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate)
     if (Execute_RS_index != 0xFFFFFFFF) {
       uint64_t execSeq = input.ROBModule.getSeq(Execute_RS.robIndex);
       if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash && execSeq < input.squashDetect.SquashSeq)) {
+          (input.squashDetect.needSquash &&
+           execSeq < input.squashDetect.SquashSeq)) {
         CPUstate.BRUModule.BRUExecute(
             Execute_RS.vj, Execute_RS.vk, Execute_RS.pc, Execute_RS.imm,
             Execute_RS.op, Execute_RS.robIndex, execSeq);
@@ -147,8 +147,35 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate)
       }
     }
   }
-  if (input.squashDetect.needSquash){
-    // 5. clear the wrong BRU outputBuffer
+  // BRU writeBack
+  SquashInfo BranchSquash;
+  if (!isEmpty()) {
+    int index = headRobIndex();
+    uint64_t brRobSeq = headRobSeq();
+    int pcResult = headPCResult();
+    int pcFrom = headPCFrom();
+    if (index >= 0 &&
+        (!input.squashDetect.needSquash ||
+         (input.squashDetect.needSquash && brRobSeq < input.squashDetect.SquashSeq))) {
+      auto actualPC = pcResult;
+      if (actualPC != input.ROBModule.getPredictedPC(index)) {
+        if (debug::enabled(debug::TOPIC_BRANCH))
+          debug::print("squash seq=%llu pc=%u (from %u)\n",
+                       static_cast<unsigned long long>(brRobSeq), actualPC,
+                       pcFrom);
+        BranchSquash.needSquash = true;
+        BranchSquash.SquashPC = actualPC;
+        BranchSquash.SquashIndex = index;
+        BranchSquash.SquashSeq = brRobSeq;
+      }
+      CPUstate.ROBModule.setROBCommitReady(index);
+    }
+    CPUstate.BRUModule.remove(brRobSeq);
+  }
+  if (BranchSquash.needSquash)
+    CPUstate.flushArbiter.receive(BranchSquash);
+  // clear the wrong BRU outputBuffer
+  if (input.squashDetect.needSquash) {
     CPUstate.BRUModule.flush(input.squashDetect.SquashSeq);
   }
 }

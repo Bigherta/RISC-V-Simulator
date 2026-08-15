@@ -59,7 +59,7 @@ int CPU::issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
   auto regNum1 = inst.rs1;
   auto regNum2 = inst.rs2;
   auto destination = inst.rd;
-  auto op1 = REGModule.readOperand(regNum1);
+  auto op1 = RATModule.readOperand(regNum1);
   if (op1.ready) {
     IntegerRS.vj = op1.value;
   } else {
@@ -77,7 +77,7 @@ int CPU::issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
   if (imm_as_vk) {
     IntegerRS.vk = inst.imm;
   } else if (has_rs2) {
-    auto op2 = REGModule.readOperand(regNum2);
+    auto op2 = RATModule.readOperand(regNum2);
     if (op2.ready) {
       IntegerRS.vk = op2.value;
     } else {
@@ -96,14 +96,14 @@ int CPU::issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
   int Physical_regNum = -1;
   if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
     Physical_regNum = CPUstate.PRFModule.pop();
-    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+    CPUstate.RATModule.setRAT_PRF(destination, Physical_regNum);
   }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
   newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? RATModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
@@ -111,7 +111,7 @@ int CPU::issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
   if (isControl) {
     newROB.type = ROBType::LINK;
     newROB.ckpt.BPsnapshot = inst.BPSnapshot;
-    auto prfSnap = REGModule.snapshotRAT_PRF();
+    auto prfSnap = RATModule.snapshotRAT_PRF();
     memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
            sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
     if (inst.allocDest)
@@ -150,14 +150,14 @@ int CPU::issue_UandJ(const Uop &inst, bool has_PC, bool isControl) {
   int Physical_regNum = -1;
   if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
     Physical_regNum = CPUstate.PRFModule.pop();
-    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+    CPUstate.RATModule.setRAT_PRF(destination, Physical_regNum);
   }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
   newROB.pc = inst.pc;
   newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
-  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? RATModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
@@ -165,7 +165,7 @@ int CPU::issue_UandJ(const Uop &inst, bool has_PC, bool isControl) {
   if (isControl) {
     newROB.type = ROBType::LINK;
     newROB.ckpt.BPsnapshot = inst.BPSnapshot;
-    auto prfSnap = REGModule.snapshotRAT_PRF();
+    auto prfSnap = RATModule.snapshotRAT_PRF();
     memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
            sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
     if (inst.allocDest)
@@ -200,7 +200,7 @@ int CPU::issue_B(const Uop &inst) {
   BranchRS.pc = inst.pc;
   auto regNum1 = inst.rs1;
   auto regNum2 = inst.rs2;
-  auto op1 = REGModule.readOperand(regNum1);
+  auto op1 = RATModule.readOperand(regNum1);
   if (op1.ready) {
     BranchRS.vj = op1.value;
   } else {
@@ -215,7 +215,7 @@ int CPU::issue_B(const Uop &inst) {
       }
     }
   }
-  auto op2 = REGModule.readOperand(regNum2);
+  auto op2 = RATModule.readOperand(regNum2);
   if (op2.ready) {
     BranchRS.vk = op2.value;
   } else {
@@ -235,7 +235,7 @@ int CPU::issue_B(const Uop &inst) {
   newROB.predictedPC = inst.predictedPC;
   newROB.lsqTailSnapshot = LSQModule.getTail();
   newROB.ckpt.BPsnapshot = inst.BPSnapshot;
-  auto prfSnap = REGModule.snapshotRAT_PRF();
+  auto prfSnap = RATModule.snapshotRAT_PRF();
   memcpy(newROB.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
          sizeof(newROB.ckpt.RATsnapshot.RAT_snapshot));
   newROB.ckpt.flHeadSeqCkpt = PRFModule.getHeadSeq();
@@ -259,7 +259,7 @@ int CPU::issue_Load(const Uop &inst, int n_bytes, bool isUnsigned) {
   auto regNum1 = inst.rs1;
   auto destination = inst.rd;
 
-  auto op1 = REGModule.readOperand(regNum1);
+  auto op1 = RATModule.readOperand(regNum1);
   if (op1.ready) {
     LoadRS.vj = op1.value;
   } else {
@@ -278,11 +278,11 @@ int CPU::issue_Load(const Uop &inst, int n_bytes, bool isUnsigned) {
   int Physical_regNum = -1;
   if (inst.allocDest && !PRFModule.isFreeListEmpty()) {
     Physical_regNum = CPUstate.PRFModule.pop();
-    CPUstate.REGModule.setRAT_PRF(destination, Physical_regNum);
+    CPUstate.RATModule.setRAT_PRF(destination, Physical_regNum);
   }
   ROBEntry newROB(ROBType::REGISTER);
   newROB.dest = destination;
-  newROB.oldPhy = inst.allocDest ? REGModule.readRAT_PRF(destination) : -1;
+  newROB.oldPhy = inst.allocDest ? RATModule.readRAT_PRF(destination) : -1;
   newROB.newPhy = Physical_regNum;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination,
@@ -311,7 +311,7 @@ int CPU::issue_Store(const Uop &inst, int n_bytes) {
   auto regNum1 = inst.rs1;
   auto regNum2 = inst.rs2;
 
-  auto op1 = REGModule.readOperand(regNum1);
+  auto op1 = RATModule.readOperand(regNum1);
   if (op1.ready) {
     StoreRS.vj = op1.value;
   } else {
@@ -330,7 +330,7 @@ int CPU::issue_Store(const Uop &inst, int n_bytes) {
 
   StoreValueReservationStation MicroRS{};
   MicroRS.free = false;
-  auto op2 = REGModule.readOperand(regNum2);
+  auto op2 = RATModule.readOperand(regNum2);
   if (op2.ready) {
     MicroRS.vrs2 = op2.value;
   } else {
@@ -563,33 +563,6 @@ CDBBypassResult CPU::CDBBypass(int phy) const {
   return out;
 }
 
-void CPU::commit() {
-  if (squashDetect.needSquash) {
-    CPUstate.ROBModule.flush(squashDetect.SquashIndex);
-    return;
-  }
-  if (ROBModule.isEmpty() || !ROBModule.isHeadCommitReady())
-    return;
-  int headIdx = ROBModule.getHead();
-  auto rob_entry = ROBModule.peek();
-  rob_entry = CPUstate.ROBModule.pop();
-  if (rob_entry.halt) {
-    CPUstate.haltCommitted = true;
-    CPUstate.haltRd = rob_entry.dest;
-  } else if (rob_entry.type == ROBType::REGISTER ||
-             rob_entry.type == ROBType::LINK) {
-    int newPhy = ROBModule.getNewPhy(headIdx);
-    int oldPhy = ROBModule.getOldPhy(headIdx);
-    auto value = PRFModule.getValue(newPhy);
-    if (debug::enabled(debug::TOPIC_COMMIT))
-      debug::print("commit seq=%llu dest=%d val=%d\n",
-                   static_cast<unsigned long long>(rob_entry.seq),
-                   rob_entry.dest, value);
-    CPUstate.REGModule.writeReg(rob_entry.dest, value);
-    if (oldPhy >= 0)
-      CPUstate.PRFModule.push(oldPhy);
-  }
-}
 void CPU::flush() {
   if (squashDetect.needSquash) {
     // 3. clear the wrong RAT_PRF
@@ -599,7 +572,7 @@ void CPU::flush() {
       memcpy(snapP.RAT_snapshot,
              ROBModule.getRATPrfCkpt(squashDetect.SquashIndex),
              sizeof(snapP.RAT_snapshot));
-      CPUstate.REGModule.restoreRAT_PRF(snapP);
+      CPUstate.RATModule.restoreRAT_PRF(snapP);
     }
     // 4. clear the old flushArbiter elements
     CPUstate.flushArbiter.clear(squashDetect.SquashSeq);
@@ -617,7 +590,7 @@ void CPU::flush() {
 }
 void CPU::read() {
   memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
-  memcpy(&REGModule, &CPUstate.REGModule, sizeof(REGModule));
+  memcpy(&RATModule, &CPUstate.RATModule, sizeof(RATModule));
   memcpy(&ROBModule, &CPUstate.ROBModule, sizeof(ROBModule));
   memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
   memcpy(&AGUModule, &CPUstate.AGUModule, sizeof(AGUModule));
@@ -662,8 +635,6 @@ void CPU::read() {
   bruInput.dispatch = dispatchBus.bru;
   rsInput.dispatchBus = dispatchBus;
   dmemInput.squashDetect = squashDetect;
-  cdbInput.squashDetect = squashDetect;
-  cdbInput.cdbArbiter = cdbArbiter;
   decodeInput.squashDetect = squashDetect;
   lsqInput.squashDetect = squashDetect;
   rsInput.squashDetect = squashDetect;
@@ -674,6 +645,21 @@ void CPU::read() {
   bruInput.squashDetect = squashDetect;
   bpInput.squashDetect = squashDetect;
   bpInput.cdbArbiter = cdbArbiter;
+  CDBBus cdbBus{};
+  if (cdbArbiter.valid) {
+    auto &r = cdbArbiter.result;
+    bool guard = !squashDetect.needSquash || r.robSeq < squashDetect.SquashSeq;
+    bool robOk = !ROBModule.isEmpty() && r.robSeq >= ROBModule.headSeq();
+    cdbBus.broadcastValid = guard && (!r.isControl || robOk);
+    cdbBus.broadcastValue =
+        r.isControl ? PRFModule.getValue(ROBModule.getNewPhy(r.robIndex))
+                    : r.value;
+    cdbBus.lsqSetCDB = guard && cdbArbiter.lsqGranted;
+    cdbBus.robIndex = r.robIndex;
+    cdbBus.robSeq = r.robSeq;
+  }
+  lsqInput.cdbBus = cdbBus;
+  rsInput.cdbBus = cdbBus;
 }
 
 bool CPU::checkPRFInvariant() const {
@@ -691,7 +677,7 @@ bool CPU::checkPRFInvariant() const {
        s != CPUstate.PRFModule.getTailSeq(); ++s)
     mark(CPUstate.PRFModule.getFreeListSlot(s));
   for (int r = 1; r < REGISTER_CAP; ++r)
-    mark(CPUstate.REGModule.readRAT_PRF(r));
+    mark(CPUstate.RATModule.readRAT_PRF(r));
   for (int i = CPUstate.ROBModule.getHead(); i != CPUstate.ROBModule.getTail();
        i = (i + 1) & (ROB_CAP - 1)) {
     int old = CPUstate.ROBModule.getOldPhy(i);
@@ -711,21 +697,18 @@ void CPU::run() {
     LSQModule.tick(lsqInput, CPUstate);
     ROBModule.tick(robInput, CPUstate);
     PRFModule.tick(prfInput, CPUstate);
-    CDBModule.tick(cdbInput, CPUstate);
     ALUModule.tick(aluInput, CPUstate);
-    AGUModule.tick(aguInput, CPUstate);  
-    BRUModule.tick(bruInput, CPUstate);  
-    BPModule.tick(bpInput, CPUstate); 
+    AGUModule.tick(aguInput, CPUstate);
+    BRUModule.tick(bruInput, CPUstate);
+    BPModule.tick(bpInput, CPUstate);
     DMEMModule.tick(dmemInput, CPUstate);
-    commit();
     RSModule.tick(rsInput, CPUstate);
     flush();
     DecodeUnitModule.tick(decodeInput, CPUstate);
-    CPUstate.REGModule.resetX0();
     assert(checkPRFInvariant());
     ++clock;
-    finish = haltCommitted && FQModule.isEmpty() && DecodeUnitModule.isEmpty() &&
-             ROBModule.isEmpty();
+    finish = haltCommitted && FQModule.isEmpty() &&
+             DecodeUnitModule.isEmpty() && ROBModule.isEmpty();
   }
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);
@@ -735,5 +718,10 @@ void CPU::run() {
                  CPUstate.branchTotal
                      ? 100.0 * CPUstate.branchCorrect / CPUstate.branchTotal
                      : 0.0);
-  std::cout << std::dec << (REGModule.readReg(haltRd) & 0xFF) << std::endl;
+  std::cout << std::dec
+            << ((haltRd == 0 ? 0
+                             : PRFModule.getValue(RATModule.readRAT_PRF(
+                                   haltRd))) &
+                0xFF)
+            << std::endl;
 }

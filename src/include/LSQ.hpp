@@ -42,7 +42,8 @@ struct LSQInput {
   const AGU &AGUModule;
   const RSUnit &RSModule;                       
   const ROB &ROBModule;                     
-  const DMEM &DMEMModule;                   
+  const DMEM &DMEMModule;
+  CDBBus cdbBus;                   
   LSQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem)
       : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem) {}
 };

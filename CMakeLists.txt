@@ -13,10 +13,9 @@ set(CPU_SOURCES
     src/ALU/ALU.cpp
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp
-    src/CDB/CDB.cpp
     src/Arbiter/Arbiter.cpp
     src/LSQ/LSQ.cpp
-    src/Register/Register.cpp
+    src/RAT/RAT.cpp
     src/FetchQueue/FetchQueue.cpp
     src/BranchPredictor/BranchPredictor.cpp
     src/PRF/PRF.cpp

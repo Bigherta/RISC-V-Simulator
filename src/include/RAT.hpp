@@ -1,0 +1,31 @@
+#pragma once
+#ifndef RAT_HPP
+#define RAT_HPP
+#include "common.hpp"
+#include <cstdint>
+#include <cstring>
+
+struct OperandInfo {
+  bool ready;
+  int32_t value;
+  int phyRegIndex;
+};
+
+class RAT {
+private:
+  int RAT_PRF[REGISTER_CAP];
+
+public:
+  RAT() {
+    std::memset(RAT_PRF, 0xFF, sizeof(RAT_PRF));
+    for (int i = 1; i < 32; i++)
+      RAT_PRF[i] = i;
+  }
+  int readRAT_PRF(int regNum) const;
+  void setRAT_PRF(int regNum, int PRF_id);
+  RATSnapshot snapshotRAT_PRF() const;
+  void restoreRAT_PRF(const RATSnapshot &snapshot);
+  OperandInfo readOperand(int regNum) const;
+};
+
+#endif // RAT_HPP

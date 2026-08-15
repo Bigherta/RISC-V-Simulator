@@ -30,9 +30,60 @@ int RSUnit::tryAllocBranch() const {
       return i;
   return -1;
 }
+void RSUnit::broadcast(const RSInput&input, systemState &CPUstate, int robIndex, int value) {
+  int phy = input.ROBModule.getNewPhy(robIndex);
+  if (phy < 0)
+    return; // no dest register: nothing to broadcast
+  for (int i = 0; i < INTEGERRS_CAP; i++) {
+    if (!integerRS[i].free &&
+        integerRS[i].qj == phy) {
+      CPUstate.RSModule.integerRS[i].vj = value;
+      CPUstate.RSModule.integerRS[i].qj = -1;
+    }
+    if (!integerRS[i].free &&
+        integerRS[i].qk == phy) {
+      CPUstate.RSModule.integerRS[i].vk = value;
+      CPUstate.RSModule.integerRS[i].qk = -1;
+    }
+  }
+  for (int i = 0; i < LOADRS_CAP; i++) {
+    if (!loadRS[i].free && loadRS[i].qj == phy) {
+      CPUstate.RSModule.loadRS[i].vj = value;
+      CPUstate.RSModule.loadRS[i].qj = -1;
+    }
+    if (!loadRS[i].free && loadRS[i].qk == phy) {
+      CPUstate.RSModule.loadRS[i].vk = value;
+      CPUstate.RSModule.loadRS[i].qk = -1;
+    }
+  }
+  for (int i = 0; i < STORERS_CAP; i++) {
+    if (!storeAddressRS[i].free &&
+        storeAddressRS[i].qj == phy) {
+      CPUstate.RSModule.storeAddressRS[i].vj = value;
+      CPUstate.RSModule.storeAddressRS[i].qj = -1;
+    }
+  }
+  for (int i = 0; i < STORERS_CAP; i++) {
+    if (!storeValueRS[i].free &&
+        storeValueRS[i].qrs2 == phy) {
+      CPUstate.RSModule.storeValueRS[i].vrs2 = value;
+      CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
+    }
+  }
+  for (int i = 0; i < BRANCHRS_CAP; i++) {
+    if (!branchRS[i].free &&
+        branchRS[i].qj == phy) {
+      CPUstate.RSModule.branchRS[i].vj = value;
+      CPUstate.RSModule.branchRS[i].qj = -1;
+    }
+    if (!branchRS[i].free &&
+        branchRS[i].qk == phy) {
+      CPUstate.RSModule.branchRS[i].vk = value;
+      CPUstate.RSModule.branchRS[i].qk = -1;
+    }
+  }
+}
 void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
-  // 段1：派发释放——RS 自己消费 dispatchBus（select 的 fan-out），
-  // 释放被各执行单元本周期派发的槽位（与原 FU 段1 的释放语义逐位一致）。
   if (input.dispatchBus.alu.valid) {
     int idx = input.dispatchBus.alu.rsIndex;
     CPUstate.RSModule.integerRS[idx].free = true;
@@ -56,7 +107,12 @@ void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
     CPUstate.RSModule.branchRS[idx].qj = -1;
     CPUstate.RSModule.branchRS[idx].qk = -1;
   }
-  // 段3：squash 清理（读 this 快照 + input.ROBModule，写 CPUstate.RSModule）
+
+  if (input.cdbBus.broadcastValid) {
+    broadcast(input, CPUstate, input.cdbBus.robIndex,
+              input.cdbBus.broadcastValue);
+  }
+
   if (input.squashDetect.needSquash) {
     auto sq = input.squashDetect.SquashSeq;
     for (int i = 0; i < INTEGERRS_CAP; i++) {

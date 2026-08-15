@@ -12,7 +12,8 @@ PRF::PRF() {
   }
   // P1-P31 are bound to x1-x31 at reset (RAT[x] = Px, committed init value 0).
   // x0 is never renamed (all issue paths skip rd==0): RAT[0] stays -1 and P0 is
-  // permanently reserved -- it never enters the free list (see checkPRFInvariant).
+  // permanently reserved -- it never enters the free list (see
+  // checkPRFInvariant).
   for (int i = 0; i < REGISTER_CAP; ++i)
     PhysicalRegs[i].ready = true;
   // P32-P127 enter the free list
@@ -53,10 +54,6 @@ void PRF::write(int index, int32_t value) {
 }
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
-  // 写回端口消费：监听两路产生者，自己写值。
-  // 注意双写：lsqGranted 的 load 条目同时满足 isReadyToCommit 与 CDBDetect——
-  // 两路会写同一 phy，但值恒相同（CDB 的 result.value == LSQ.getValue(同一条目)），
-  // 幂等无冲突（与原 LSQ ready 广播 + CDB 消费双写行为一致）。
   auto head = input.LSQModule.getHead();
   auto tail = input.LSQModule.getTail();
   for (int i = head; i != ((head + (LSQ_CAP >> 3)) & 0x3F);
@@ -67,7 +64,8 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
       auto lsqRobIndex = input.LSQModule.getRobIndex(i);
       auto lsqSeq = input.LSQModule.getRobSeq(i);
       if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash && lsqSeq < input.squashDetect.SquashSeq)) {
+          (input.squashDetect.needSquash &&
+           lsqSeq < input.squashDetect.SquashSeq)) {
         if (!input.ROBModule.isEmpty() && lsqSeq >= input.ROBModule.headSeq()) {
           int newPhy = input.ROBModule.getNewPhy(lsqRobIndex);
           if (newPhy >= 0) {
@@ -100,5 +98,20 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
         }
       }
     }
+  }
+  if (input.squashDetect.needSquash) {
+    return;
+  }
+  if (input.ROBModule.isEmpty() || !input.ROBModule.isHeadCommitReady())
+    return;
+  int headIdx = input.ROBModule.getHead();
+  auto rob_entry = input.ROBModule.peek();
+  if (rob_entry.halt) {
+  } else if (rob_entry.type == ROBType::REGISTER ||
+             rob_entry.type == ROBType::LINK) {
+    int newPhy = input.ROBModule.getNewPhy(headIdx);
+    int oldPhy = input.ROBModule.getOldPhy(headIdx);
+    if (oldPhy >= 0)
+      CPUstate.PRFModule.push(oldPhy);
   }
 }

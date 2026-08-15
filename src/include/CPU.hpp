@@ -6,7 +6,6 @@
 #include "Arbiter.hpp"
 #include "BRU.hpp"
 #include "BranchPredictor.hpp"
-#include "CDB.hpp"
 #include "DMEM.hpp"
 #include "Decoder.hpp"
 #include "FetchQueue.hpp"
@@ -16,14 +15,14 @@
 #include "PRF.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
-#include "Register.hpp"
+#include "RAT.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
 
 struct systemState {
   RSUnit RSModule;
-  RegCluster REGModule;
+  RAT RATModule;
   ROB ROBModule;
   ALU ALUModule;
   AGU AGUModule;
@@ -53,7 +52,7 @@ private:
   IMEM InstructMem;
   friend struct ReorderTester;
   RSUnit RSModule;
-  RegCluster REGModule;
+  RAT RATModule;
   ROB ROBModule;
   ALU ALUModule;
   AGU AGUModule;
@@ -67,13 +66,11 @@ private:
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
-  CDB CDBModule;
   AGUInput aguInput{LSQModule, RSModule};
   ALUInput aluInput{RSModule};
   BRUInput bruInput{ROBModule, RSModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
   DMEMInput dmemInput{LSQModule};
-  CDBInput cdbInput{ROBModule, LSQModule, RSModule, PRFModule};
   DecodeInput decodeInput{FQModule};
   LSQInput lsqInput{AGUModule, RSModule, ROBModule, DMEMModule};
   RSInput rsInput{ROBModule};
@@ -99,7 +96,6 @@ public:
   int issue_B(const Uop &inst);
   static Operation decodeOp(const Uop &inst);
   CDBBypassResult CDBBypass(int robIndex) const;
-  void commit();
   void flush();
   void run();
 };

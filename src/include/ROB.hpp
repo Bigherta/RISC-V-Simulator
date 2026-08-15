@@ -55,7 +55,7 @@ public:
   uint64_t headSeq() const;
   int push(ROBEntry entry);
   ROBEntry peek() const;
-  ROBEntry pop();
+  void pop();
   int getTail() const;
   int getHead() const;
   uint64_t getSeq(int index) const;

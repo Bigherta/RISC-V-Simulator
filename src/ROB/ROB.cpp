@@ -16,11 +16,7 @@ int ROB::push(ROBEntry entry) {
   return index;
 }
 
-ROBEntry ROB::pop() {
-  auto temp = ROBqueue[head];
-  head = (head + 1) & 0x3F;
-  return temp;
-}
+void ROB::pop() { head = (head + 1) & 0x3F; }
 
 ROBEntry ROB::peek() const {
   if (isEmpty())
@@ -81,8 +77,7 @@ int ROB::getTail() const { return tail; }
 void ROB::flush(int squashIndex) { tail = (squashIndex + 1) & 0x3F; }
 
 void ROB::tick(const ROBInput &input, systemState &CPUstate) {
-  // 完成端口消费：监听三路产生者，自己置 commit-ready。
-  // 1. BRU 分支解析完成
+  // 1. BRU set ROB ready
   if (!input.BRUModule.isEmpty()) {
     int index = input.BRUModule.headRobIndex();
     uint64_t brRobSeq = input.BRUModule.headRobSeq();
@@ -92,7 +87,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       CPUstate.ROBModule.setROBCommitReady(index);
     }
   }
-  // 2. LSQ 条目就绪（定长 8 窗口 + tail 守卫）
+  // 2. LSQ set ROB ready
   auto head = input.LSQModule.getHead();
   auto tail = input.LSQModule.getTail();
   for (int i = head; i != ((head + (LSQ_CAP >> 3)) & 0x3F);
@@ -111,7 +106,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       }
     }
   }
-  // 3. CDB 结果（含 JALR 控制转移解析 → flushArbiter）
+  // 3. CDB set ROB ready
   CDBOutput cdbOut = input.cdbArbiter;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
@@ -138,5 +133,18 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       if (JumpSquash.needSquash)
         CPUstate.flushArbiter.receive(JumpSquash);
     }
+  }
+  if (input.squashDetect.needSquash) {
+    CPUstate.ROBModule.flush(input.squashDetect.SquashIndex);
+    return;
+  }
+  if (isEmpty() || !isHeadCommitReady())
+    return;
+  int headIdx = getHead();
+  auto rob_entry = peek();
+  CPUstate.ROBModule.pop();
+  if (rob_entry.halt) {
+    CPUstate.haltCommitted = true;
+    CPUstate.haltRd = rob_entry.dest;
   }
 }

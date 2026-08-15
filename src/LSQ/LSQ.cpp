@@ -336,7 +336,12 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
       }
     }
   }
-
+  // 消费 CDB 总线：lsqGranted（guard 已并入 bus 预计算）
+  if (input.cdbBus.lsqSetCDB) {
+    auto lsqIndex = getIndexBySeq(input.cdbBus.robSeq);
+    if (lsqIndex >= 0)
+      CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
+  }
   // clear the wrong LSQ (only on squash; SquashIndex is -1 otherwise)
   if (input.squashDetect.needSquash) {
     CPUstate.LSQModule.flush(

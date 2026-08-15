@@ -34,7 +34,8 @@ struct systemState;
 struct RSInput {
   SquashInfo squashDetect;
   const ROB &ROBModule;        
-  DispatchBus dispatchBus;              // 派发释放（read() 填充，快照边求值）
+  DispatchBus dispatchBus;
+  CDBBus cdbBus;
   RSInput(const ROB &rob) : ROBModule(rob) {}
 };
 class RSUnit {
@@ -50,6 +51,7 @@ public:
   int tryAllocStoreAddress() const;
   int tryAllocStoreValue() const;
   int tryAllocBranch() const;
+  void broadcast(const RSInput&, systemState&, int robIndex, int value);
   void tick(const RSInput&, systemState&);  
 };
 #endif // RS_HPP

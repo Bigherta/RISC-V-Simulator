@@ -134,9 +134,9 @@ struct RATSnapshot {
 };
 
 struct Checkpoint {
-  RATSnapshot RATsnapshot;                
-  BranchPredictorSnapshot BPsnapshot{};    
-  uint32_t flHeadSeqCkpt = 0;              
+  RATSnapshot RATsnapshot;
+  BranchPredictorSnapshot BPsnapshot{};
+  uint32_t flHeadSeqCkpt = 0;
 };
 
 struct Uop {
@@ -162,5 +162,14 @@ struct DispatchInfo {
   uint64_t robSeq = 0;
   RSType rsType = RSType::Integer;
 };
-struct DispatchBus { DispatchInfo alu, agu, bru; };
+struct DispatchBus {
+  DispatchInfo alu, agu, bru;
+};
+struct CDBBus {
+  bool broadcastValid = false;
+  int broadcastValue = 0;
+  bool lsqSetCDB = false;
+  int robIndex = -1;
+  uint64_t robSeq = 0;
+};
 #endif // COMMON_HPP

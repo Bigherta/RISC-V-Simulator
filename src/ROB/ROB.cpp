@@ -78,8 +78,9 @@ int ROB::getTail() const { return tail; }
 void ROB::flush(int squashIndex) { tail = (squashIndex + 1) & 0x3F; }
 
 void ROB::tick(const ROBInput &input, systemState &CPUstate) {
-  // issue apply: push the pre-built ROB entry
-  if (input.issuePacket.valid) {
+  // issue apply: push the pre-built ROB entry (robIndex >= 0 excludes the
+  // RV_INVALID "pop-only" packet, whose robIndex stays at the default -1)
+  if (input.issuePacket.valid && input.issuePacket.robIndex >= 0) {
     int idx = CPUstate.ROBModule.push(input.issuePacket.robEntry);
     assert(idx == input.issuePacket.robIndex);
   }

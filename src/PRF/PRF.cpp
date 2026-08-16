@@ -99,7 +99,23 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
       }
     }
   }
+  if (input.issuePacket.valid && input.issuePacket.allocDest) {
+    auto headphy = CPUstate.PRFModule.pop();
+    assert(headphy == input.issuePacket.phy);
+    if (input.issuePacket.isControl) {
+      CPUstate.PRFModule.write(input.issuePacket.phy,
+                               input.issuePacket.pc + 4);
+      if (debug::enabled(debug::TOPIC_PRF))
+        debug::print("PRF link P%d = %d (pc+4)\n", input.issuePacket.phy,
+                     input.issuePacket.pc + 4);
+    }
+  }
   if (input.squashDetect.needSquash) {
+    auto index = input.squashDetect.SquashIndex;
+    if (index >= 0) {
+      auto ckptHead = input.ROBModule.getFlHeadSeqCkpt(index);
+      CPUstate.PRFModule.restoreHead(ckptHead);
+    }
     return;
   }
   if (input.ROBModule.isEmpty() || !input.ROBModule.isHeadCommitReady())

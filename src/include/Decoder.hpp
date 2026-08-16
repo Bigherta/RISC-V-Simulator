@@ -31,10 +31,13 @@ public:
   void clear();
 };
 #include "FetchQueue.hpp"
+struct IssuePacket;
 struct DecodeInput {
   SquashInfo squashDetect;
   const FetchQueue &FQModule;
-  DecodeInput(const FetchQueue &fq) : FQModule(fq) {}
+  const IssuePacket &issuePacket;
+  DecodeInput(const FetchQueue &fq, const IssuePacket &pkt)
+      : FQModule(fq), issuePacket(pkt) {}
 };
 struct systemState;
 class DecodeUnit {

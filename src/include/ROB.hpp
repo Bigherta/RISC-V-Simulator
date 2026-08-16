@@ -31,12 +31,15 @@ struct ROBEntry {
                 sizeof(ckpt.RATsnapshot.RAT_snapshot));
   }
 };
+struct IssuePacket;
 struct ROBInput {
   SquashInfo squashDetect;
   CDBOutput cdbArbiter;
   const BRU &BRUModule;
   const LSQ &LSQModule;
-  ROBInput(const BRU &bru, const LSQ &lsq) : BRUModule(bru), LSQModule(lsq) {}
+  const IssuePacket &issuePacket;
+  ROBInput(const BRU &bru, const LSQ &lsq, const IssuePacket &pkt)
+      : BRUModule(bru), LSQModule(lsq), issuePacket(pkt) {}
 };
 class ROB {
   friend struct ReorderTester;
@@ -53,6 +56,7 @@ public:
   bool isEmpty() const;
   bool isHeadCommitReady() const;
   uint64_t headSeq() const;
+  uint64_t getNextSeq() const { return next_seq; }
   int push(ROBEntry entry);
   ROBEntry peek() const;
   void pop();

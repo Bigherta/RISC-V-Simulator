@@ -238,6 +238,12 @@ bool LSQ::isReadyToCommit(int index) const {
 }
 
 void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
+  // 0. issue apply: push the pre-built load/store entries
+  const auto &p = input.issuePacket;
+  if (p.valid && p.isLoad)
+    CPUstate.LSQModule.pushLoad(p.robIndex, p.robSeq, p.nBytes, p.isUnsigned);
+  if (p.valid && p.isStore)
+    CPUstate.LSQModule.pushStore(p.robIndex, p.robSeq, p.nBytes);
   for (int i = 0; i < STORERS_CAP; ++i) {
     if (!input.RSModule.storeValueRS[i].free &&
         input.RSModule.storeValueRS[i].qrs2 == -1) {

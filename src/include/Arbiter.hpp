@@ -2,6 +2,10 @@
 #include "AGU.hpp"
 #include "ALU.hpp"
 #include "BRU.hpp"
+#include "Decoder.hpp"
+#include "PRF.hpp"
+#include "RAT.hpp"
+#include "ROB.hpp"
 #include "RS.hpp"
 #include "common.hpp"
 #include <cstdint>
@@ -15,6 +19,24 @@ struct CDBCandidate {
   ArithmeticCalculateResult result{};
 };
 
+struct systemState;
+class ROB;
+
+// FlushArbiter owns its queue and the whole squash flow: 段1 consumes the
+// accepted squash (clear), 段2 detects BRU branch mispredicts, 段3 detects
+// CDB JALR mispredicts -- all reads from the snapshots (BRUModule head,
+// cdbArbiter, ROBModule), all writes to its own queue (receive). The BRU/CDB
+// producers' writeBack parts (remove / setROBCommitReady) stay in their own
+// ticks.
+struct FlushArbiterInput {
+  const BRU &BRUModule;
+  const ROB &ROBModule;
+  CDBOutput cdbArbiter;
+  SquashInfo squashDetect;
+  FlushArbiterInput(const BRU &bru, const ROB &rob)
+      : BRUModule(bru), ROBModule(rob) {}
+};
+
 class FlushArbiter {
 private:
   FlushRequest requests[FLUSHARBITER_CAP];
@@ -25,6 +47,7 @@ public:
   SquashInfo arbitResult() const;
   void clear(uint64_t seq);
   FlushRequest getRequest(int i) const;
+  void tick(const FlushArbiterInput &, systemState &);
 };
 
 class CDBArbiter {

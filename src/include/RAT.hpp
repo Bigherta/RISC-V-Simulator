@@ -1,6 +1,5 @@
 #pragma once
-#ifndef RAT_HPP
-#define RAT_HPP
+#include "ROB.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -10,7 +9,16 @@ struct OperandInfo {
   int32_t value;
   int phyRegIndex;
 };
+struct IssuePacket;
+struct RATInput {
+  const IssuePacket &issuePacket;
+  SquashInfo squashDetect;
+  const ROB &ROBModule;
+  RATInput(const ROB &rob, const IssuePacket &pkt)
+      : ROBModule(rob), issuePacket(pkt) {}
+};
 
+struct systemState;
 class RAT {
 private:
   int RAT_PRF[REGISTER_CAP];
@@ -26,6 +34,5 @@ public:
   RATSnapshot snapshotRAT_PRF() const;
   void restoreRAT_PRF(const RATSnapshot &snapshot);
   OperandInfo readOperand(int regNum) const;
+  void tick(const RATInput &, systemState &);
 };
-
-#endif // RAT_HPP

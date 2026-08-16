@@ -124,6 +124,8 @@ void DecodeUnit::tick(const DecodeInput &input, systemState &CPUstate){
     CPUstate.DecodeUnitModule.clear();
     return;
   }
+  if (input.issuePacket.valid)
+    CPUstate.DecodeUnitModule.pop();
   if (input.FQModule.isEmpty() || isFull())
     return;
   auto raw = input.FQModule.headRaw();

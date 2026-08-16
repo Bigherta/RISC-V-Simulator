@@ -118,31 +118,10 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate) {
                                   rs.robIndex, input.dispatch.robSeq);
   }
   // BRU writeBack
-  SquashInfo BranchSquash;
   if (!isEmpty()) {
-    int index = headRobIndex();
     uint64_t brRobSeq = headRobSeq();
-    int pcResult = headPCResult();
-    int pcFrom = headPCFrom();
-    if (index >= 0 &&
-        (!input.squashDetect.needSquash ||
-         (input.squashDetect.needSquash && brRobSeq < input.squashDetect.SquashSeq))) {
-      auto actualPC = pcResult;
-      if (actualPC != input.ROBModule.getPredictedPC(index)) {
-        if (debug::enabled(debug::TOPIC_BRANCH))
-          debug::print("squash seq=%llu pc=%u (from %u)\n",
-                       static_cast<unsigned long long>(brRobSeq), actualPC,
-                       pcFrom);
-        BranchSquash.needSquash = true;
-        BranchSquash.SquashPC = actualPC;
-        BranchSquash.SquashIndex = index;
-        BranchSquash.SquashSeq = brRobSeq;
-      }
-    }
     CPUstate.BRUModule.remove(brRobSeq);
   }
-  if (BranchSquash.needSquash)
-    CPUstate.flushArbiter.receive(BranchSquash);
   // clear the wrong BRU outputBuffer
   if (input.squashDetect.needSquash) {
     CPUstate.BRUModule.flush(input.squashDetect.SquashSeq);

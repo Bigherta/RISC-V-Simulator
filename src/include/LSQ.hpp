@@ -37,6 +37,7 @@ struct AGU;
 struct RSUnit;
 struct ROB;
 struct DMEM;
+struct IssuePacket;
 struct LSQInput {
   SquashInfo squashDetect;
   const AGU &AGUModule;
@@ -44,8 +45,11 @@ struct LSQInput {
   const ROB &ROBModule;                     
   const DMEM &DMEMModule;
   CDBBus cdbBus;                   
-  LSQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem)
-      : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem) {}
+  const IssuePacket &issuePacket;
+  LSQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem,
+           const IssuePacket &pkt)
+      : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem),
+        issuePacket(pkt) {}
 };
 class LSQ {
   friend struct ReorderTester;

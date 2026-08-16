@@ -3,16 +3,19 @@
 #include "ROB.hpp"
 #include "common.hpp"
 #include <cstdint>
+struct IssuePacket;
 struct PRFEntry {
   int32_t value;
   bool ready;
 };
 struct PRFInput {
+  const IssuePacket &issuePacket;
   SquashInfo squashDetect;
   CDBOutput cdbArbiter;
   const LSQ &LSQModule;
   const ROB &ROBModule;
-  PRFInput(const LSQ &lsq, const ROB &rob) : LSQModule(lsq), ROBModule(rob) {}
+  PRFInput(const LSQ &lsq, const ROB &rob, const IssuePacket &pkt)
+      : LSQModule(lsq), ROBModule(rob), issuePacket(pkt) {}
 };
 struct systemState;
 class PRF {

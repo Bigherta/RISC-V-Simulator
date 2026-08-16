@@ -1,5 +1,6 @@
 #include "../include/Arbiter.hpp"
 #include "../include/CPU.hpp"
+#include "../include/util.hpp"
 #include <cstring>
 #include <stdexcept>
 
@@ -53,6 +54,63 @@ void FlushArbiter::clear(uint64_t seq) {
 
 FlushRequest FlushArbiter::getRequest(int i) const { return requests[i]; }
 
+void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
+  if (input.squashDetect.needSquash)
+    CPUstate.flushArbiter.clear(input.squashDetect.SquashSeq);
+
+  if (!input.BRUModule.isEmpty()) {
+    SquashInfo BranchSquash;
+    int index = input.BRUModule.headRobIndex();
+    uint64_t brRobSeq = input.BRUModule.headRobSeq();
+    int pcResult = input.BRUModule.headPCResult();
+    int pcFrom = input.BRUModule.headPCFrom();
+    if (index >= 0 && (!input.squashDetect.needSquash ||
+                       (input.squashDetect.needSquash &&
+                        brRobSeq < input.squashDetect.SquashSeq))) {
+      auto actualPC = pcResult;
+      if (actualPC != input.ROBModule.getPredictedPC(index)) {
+        if (debug::enabled(debug::TOPIC_BRANCH))
+          debug::print("squash seq=%llu pc=%u (from %u)\n",
+                       static_cast<unsigned long long>(brRobSeq), actualPC,
+                       pcFrom);
+        BranchSquash.needSquash = true;
+        BranchSquash.SquashPC = actualPC;
+        BranchSquash.SquashIndex = index;
+        BranchSquash.SquashSeq = brRobSeq;
+      }
+    }
+    if (BranchSquash.needSquash)
+      CPUstate.flushArbiter.receive(BranchSquash);
+  }
+
+  CDBOutput cdbOut = input.cdbArbiter;
+  if (cdbOut.valid) {
+    if (!input.squashDetect.needSquash ||
+        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
+      auto robIndex = cdbOut.result.robIndex;
+      auto robSeq = cdbOut.result.robSeq;
+      auto isControl = cdbOut.result.isControl;
+
+      if (!input.ROBModule.isEmpty() && robSeq >= input.ROBModule.headSeq() &&
+          isControl) {
+        SquashInfo JumpSquash;
+        const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+        if (pc != input.ROBModule.getPredictedPC(robIndex)) {
+          if (debug::enabled(debug::TOPIC_BRANCH))
+            debug::print("squash seq=%llu pc=%u (jalr)\n",
+                         static_cast<unsigned long long>(robSeq), pc);
+          JumpSquash.needSquash = true;
+          JumpSquash.SquashPC = pc;
+          JumpSquash.SquashIndex = robIndex;
+          JumpSquash.SquashSeq = robSeq;
+        }
+        if (JumpSquash.needSquash)
+          CPUstate.flushArbiter.receive(JumpSquash);
+      }
+    }
+  }
+}
+
 CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
                                 const CDBCandidate &lsqCandidate,
                                 const SquashInfo &squash) {
@@ -103,8 +161,6 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
                                        const ROB &ROB,
                                        const SquashInfo &squash) {
   DispatchBus dispatch;
-  // 与原 ALU/AGU/BRU 段1 的选择逻辑逐字等价（同一快照求值一次）：
-  // gate（FU isFull）→ 最老就绪（ROB seq 比较）→ squash 过滤。
   if (!ALU.isFull()) {
     bool foundAny = false;
     int best = -1;
@@ -130,8 +186,6 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
         dispatch.alu.valid = false;
     }
   }
-  // AGU：跨 loadRS 与 storeAddressRS 统一选最老（单一 foundAny，原段1 语义；
-  // storeAddress 只查 qj==-1——qk 恒为 -1，与只查 qj 等价）。
   if (!AGU.isFull()) {
     bool foundAny = false;
     int best = -1;

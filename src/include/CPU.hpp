@@ -3,6 +3,7 @@
 #define CPU_HPP
 #include "AGU.hpp"
 #include "ALU.hpp"
+#include "IssueArbiter.hpp"
 #include "Arbiter.hpp"
 #include "BRU.hpp"
 #include "BranchPredictor.hpp"
@@ -13,9 +14,9 @@
 #include "LSQ.hpp"
 #include "Memory.hpp"
 #include "PRF.hpp"
+#include "RAT.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
-#include "RAT.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -66,16 +67,21 @@ private:
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbArbiter;
+  IssuePacket issuePacket;
   AGUInput aguInput{LSQModule, RSModule};
   ALUInput aluInput{RSModule};
   BRUInput bruInput{ROBModule, RSModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
   DMEMInput dmemInput{LSQModule};
-  DecodeInput decodeInput{FQModule};
-  LSQInput lsqInput{AGUModule, RSModule, ROBModule, DMEMModule};
-  RSInput rsInput{ROBModule};
-  ROBInput robInput{BRUModule, LSQModule};
-  PRFInput prfInput{LSQModule, ROBModule};
+  DecodeInput decodeInput{FQModule, issuePacket};
+  LSQInput lsqInput{AGUModule, RSModule, ROBModule, DMEMModule, issuePacket};
+  RSInput rsInput{ROBModule, issuePacket};
+  ROBInput robInput{BRUModule, LSQModule, issuePacket};
+  PRFInput prfInput{LSQModule, ROBModule, issuePacket};
+  RATInput ratInput{ROBModule, issuePacket};
+  FlushArbiterInput flarbInput{BRUModule, ROBModule};
+  IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
+                               RATModule,        PRFModule, LSQModule};
   uint32_t programCounter;
   SquashInfo squashDetect;
   bool haltFetched = false;
@@ -87,16 +93,6 @@ public:
   CPU(Memory mem);
   void read();
   void fetch();
-  void issue();
-  int issue_IntegerRS(const Uop &inst, bool has_rs2, bool imm_as_vk,
-                      bool isControl);
-  int issue_UandJ(const Uop &inst, bool has_PC, bool isControl = false);
-  int issue_Load(const Uop &inst, int n_bytes, bool isUnsigned);
-  int issue_Store(const Uop &inst, int n_bytes);
-  int issue_B(const Uop &inst);
-  static Operation decodeOp(const Uop &inst);
-  CDBBypassResult CDBBypass(int robIndex) const;
-  void flush();
   void run();
 };
 

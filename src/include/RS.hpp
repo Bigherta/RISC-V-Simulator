@@ -30,13 +30,16 @@ struct BranchReservationStation : public ReservationStation {
   BranchReservationStation(Operation type) : ReservationStation(type) {}
 };
 struct ROB;
+struct IssuePacket;
 struct systemState;
 struct RSInput {
   SquashInfo squashDetect;
   const ROB &ROBModule;        
   DispatchBus dispatchBus;
   CDBBus cdbBus;
-  RSInput(const ROB &rob) : ROBModule(rob) {}
+  const IssuePacket &issuePacket;
+  RSInput(const ROB &rob, const IssuePacket &pkt)
+      : ROBModule(rob), issuePacket(pkt) {}
 };
 class RSUnit {
   friend struct ReorderTester;

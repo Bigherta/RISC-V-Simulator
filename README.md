@@ -38,18 +38,18 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── INQ.hpp                # 指令队列
 │   │   ├── LSQ.hpp                # 加载/存储队列（store→load 转发）
 │   │   ├── Memory.hpp             # 带延迟的数据/指令内存
-│   │   ├── Register.hpp           # 寄存器堆 + RAT
+│   │   ├── RAT.hpp                # RAT（架构寄存器→物理寄存器映射表）
 │   │   ├── ROB.hpp                # 重排序缓冲
 │   │   ├── RS.hpp                 # 保留站（Integer / Load / Store / MicroStore / Branch）
 │   │   └── util.hpp               # 调试宏（VERBOSE 主题开关）
 │   ├── ALU/  AGU/  BRU/  BranchPredictor/  Decoder/  INQ/  LSQ/  Memory/
-│   └── PRF/  Register/  ROB/
+│   └── PRF/  RAT/  ROB/
 ├── data/                          # 测试数据
 │   ├── sample/                    # 示例程序
 │   ├── testcases/                 # 18 个官方测试点（.c 源码 + .data 机器码 + .dump 反汇编）
 │   └── golden/                    # 基线（返回值 + 时钟数）
 ├── test/                          # 乱序执行一致性测试（独立构建，不影响 OJ 提交）
-│   ├── reorder_test.cpp           # 以任意顺序调用 7 个流水级的测试驱动
+│   ├── reorder_test.cpp           # 以任意顺序调用 13 个流水级的测试驱动
 │   ├── CMakeLists.txt
 │   └── test_reorder.sh            # 一致性测试脚本
 ├── test.sh                        # 代码行为测试脚本（返回值 / 分支正确率 / 时钟数）
@@ -101,7 +101,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ### 5.1 乱序执行一致性测试 — `test/test_reorder.sh`
 
-`test/reorder_test` 以**任意顺序**调用 7 个流水级（fetch / decode / issue / exec / writeBack / commit / flush），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
+`test/reorder_test` 以**任意顺序**调用 13 个流水级（rat / lsq / decode / fetch / agu / bru / bp / dmem / alu / rs / rob / prf / arb），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
 
 构建（独立于根目录，不影响 OJ 提交）：
 

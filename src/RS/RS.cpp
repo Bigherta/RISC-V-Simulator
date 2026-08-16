@@ -84,6 +84,19 @@ void RSUnit::broadcast(const RSInput&input, systemState &CPUstate, int robIndex,
   }
 }
 void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
+  const auto &p = input.issuePacket;
+  if (p.valid) {
+    if (p.hasInteger) {
+      CPUstate.RSModule.integerRS[p.integerSlot] = p.integerRS;
+    } else if (p.hasLoad) {
+      CPUstate.RSModule.loadRS[p.loadSlot] = p.loadRS;
+    } else if (p.hasStore) {
+      CPUstate.RSModule.storeAddressRS[p.storeAddrSlot] = p.storeAddrRS;
+      CPUstate.RSModule.storeValueRS[p.storeValueSlot] = p.storeValueRS;
+    } else if (p.hasBranch) {
+      CPUstate.RSModule.branchRS[p.branchSlot] = p.branchRS;
+    }
+  }
   if (input.dispatchBus.alu.valid) {
     int idx = input.dispatchBus.alu.rsIndex;
     CPUstate.RSModule.integerRS[idx].free = true;

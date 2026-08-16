@@ -76,6 +76,12 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     apply(bru);
   if (cdb.valid)
     apply(cdb);
+  // flush: restore GHR/RAS from the squashed branch's checkpoint
+  // (tables keep the guarded updates above; only GHR/RAS are rewound).
+  if (input.squashDetect.needSquash &&
+      input.squashDetect.SquashIndex >= 0)
+    CPUstate.BPModule.recoverCheckPoint(
+        input.ROBModule.getRASCkpt(input.squashDetect.SquashIndex));
 }
 PredictInfo BranchPredictor::predict(int32_t pc) {
   auto local_index = (pc >> 2) & (LHT_CAP - 1);

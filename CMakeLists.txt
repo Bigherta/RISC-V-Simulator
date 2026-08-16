@@ -14,6 +14,7 @@ set(CPU_SOURCES
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp
     src/Arbiter/Arbiter.cpp
+    src/IssueArbiter/IssueArbiter.cpp
     src/LSQ/LSQ.cpp
     src/RAT/RAT.cpp
     src/FetchQueue/FetchQueue.cpp

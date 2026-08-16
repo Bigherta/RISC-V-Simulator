@@ -11,7 +11,7 @@ struct PRFEntry {
 struct PRFInput {
   const IssuePacket &issuePacket;
   SquashInfo squashDetect;
-  CDBOutput cdbArbiter;
+  CDBOutput cdbOut;
   const LSQ &LSQModule;
   const ROB &ROBModule;
   PRFInput(const LSQ &lsq, const ROB &rob, const IssuePacket &pkt)

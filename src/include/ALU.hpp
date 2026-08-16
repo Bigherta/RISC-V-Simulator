@@ -7,7 +7,7 @@ struct systemState;
 struct ALUInput {
   SquashInfo squashDetect;
   const RSUnit &RSModule;
-  CDBOutput cdbArbiter;
+  CDBOutput cdbOut;
   DispatchInfo dispatch;               
   ALUInput(const RSUnit &rs)
       : RSModule(rs) {}

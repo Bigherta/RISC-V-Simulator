@@ -3,6 +3,7 @@
 #include "ALU.hpp"
 #include "BRU.hpp"
 #include "Decoder.hpp"
+#include "LSQ.hpp"
 #include "PRF.hpp"
 #include "RAT.hpp"
 #include "ROB.hpp"
@@ -25,13 +26,13 @@ class ROB;
 // FlushArbiter owns its queue and the whole squash flow: 段1 consumes the
 // accepted squash (clear), 段2 detects BRU branch mispredicts, 段3 detects
 // CDB JALR mispredicts -- all reads from the snapshots (BRUModule head,
-// cdbArbiter, ROBModule), all writes to its own queue (receive). The BRU/CDB
+// cdbOut, ROBModule), all writes to its own queue (receive). The BRU/CDB
 // producers' writeBack parts (remove / setROBCommitReady) stay in their own
 // ticks.
 struct FlushArbiterInput {
   const BRU &BRUModule;
   const ROB &ROBModule;
-  CDBOutput cdbArbiter;
+  CDBOutput cdbOut;
   SquashInfo squashDetect;
   FlushArbiterInput(const BRU &bru, const ROB &rob)
       : BRUModule(bru), ROBModule(rob) {}
@@ -52,6 +53,10 @@ public:
 
 class CDBArbiter {
 public:
+  // build: collect the two CDB candidates from the module snapshots
+  // (ALU head / LSQ CDBDetect) then arbitrate -- the whole read()-side
+  // construction, producers stay unknown to the arbiter.
+  static CDBOutput build(const ALU &, const LSQ &, const SquashInfo &);
   // arbitrate between the two CDB candidates (ALU result / LSQ load value).
   // Candidates are plain data collected from the module snapshots in read();
   // the arbiter itself does not know the producers.

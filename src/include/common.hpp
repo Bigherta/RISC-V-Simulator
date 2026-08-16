@@ -114,6 +114,10 @@ struct CDBBypassResult {
 struct PredictInfo {
   bool taken;
   int32_t predictPC;
+  bool btbHit = false;       // BTB 命中（分支类型信息来自 BTB）
+  bool unconditional = false;
+  bool isCall = false;       // JAL rd==1
+  bool isRet = false;        // JALR x0, 0(x1)
 };
 
 struct BTBEntry {
@@ -121,6 +125,8 @@ struct BTBEntry {
   uint32_t target;
   bool valid;
   bool unconditional;
+  bool isCall = false;
+  bool isRet = false;
 };
 
 struct BranchPredictorSnapshot {
@@ -165,11 +171,33 @@ struct DispatchInfo {
 struct DispatchBus {
   DispatchInfo alu, agu, bru;
 };
+class ROB;
+class PRF;
 struct CDBBus {
   bool broadcastValid = false;
   int broadcastValue = 0;
   bool lsqSetCDB = false;
   int robIndex = -1;
   uint64_t robSeq = 0;
+  // read() 边组合求值（同 CDBArbiter 模式）：广播判定与载荷一次打包，
+  // 消费者只"应用"不"重算"（定义见 Arbiter.cpp）。
+  static CDBBus build(const CDBOutput &cdbOut, const ROB &ROBModule,
+                      const PRF &PRFModule, const SquashInfo &squashDetect);
+};
+struct BranchPredictor;
+struct FetchDecision {
+  bool valid = false;
+  uint32_t pc = 0;
+  int32_t predictedPC = 0;
+  bool isCall = false;
+  bool isRet = false;
+  bool shift = false;
+  bool shiftValue = false;
+  BranchPredictorSnapshot ckpt;
+  // read() 边组合求值：取指条件（squash/halt/FQ 满/窗口满）+ predict（快照
+  // BP）+ 预测拍快照（定义见 BranchPredictor.cpp）。
+  static FetchDecision build(const BranchPredictor &bp, uint32_t pc,
+                             const SquashInfo &squash, bool haltFetched,
+                             bool fqFull, bool imemReqFull);
 };
 #endif // COMMON_HPP

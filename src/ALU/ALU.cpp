@@ -131,8 +131,8 @@ void ALU::tick(const ALUInput &input, systemState &CPUstate) {
                             input.dispatch.robSeq, isControlOp(rs.op));
   }
   // ALU writeBack: consume this unit's own grant on the CDB result.
-  if (input.cdbArbiter.valid && input.cdbArbiter.aluGranted) {
-    CPUstate.ALUModule.remove(input.cdbArbiter.result.robSeq);
+  if (input.cdbOut.valid && input.cdbOut.aluGranted) {
+    CPUstate.ALUModule.remove(input.cdbOut.result.robSeq);
   }
   // clear the wrong ALU outputBuffer
   if (input.squashDetect.needSquash) {

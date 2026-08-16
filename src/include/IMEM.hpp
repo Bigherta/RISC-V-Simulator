@@ -1,36 +1,41 @@
 #pragma once
 #include "BranchPredictor.hpp"
-#ifndef IMEM_HPP
-#define IMEM_HPP
-#include "../include/Memory.hpp"
-#include "../include/common.hpp"
+#include "Memory.hpp"
+#include "FetchQueue.hpp"
+#include "common.hpp"
 #include <cstdint>
+#include <cstring>
 
 struct systemState;
 struct IMEMInput {
-  const SquashInfo squashDetect;
-  const bool FQready;
-  const BranchPredictor &BPModule;
-  const int32_t PC;
-  const bool haltFetchRequest;
+  SquashInfo squashDetect;
+  const FetchQueue &FQModule;
+  FetchDecision fetchDecision;
+  IMEMInput(const FetchQueue &fq) : FQModule(fq) {}
 };
 struct IMEMRequest {
   uint32_t raw_inst;
-  int remain_cycle = 3;
+  int remain_cycle = 0;
   int32_t PC;
   int32_t predictPC;
-  bool valid = true;
+  BranchPredictorSnapshot ckpt;
+  bool valid = false;
 };
-// Instruction memory.
+// Instruction memory. 取指单元：除访存管线外，还拥有 fetch 控制状态
+// （programCounter 推进 / haltFetched 置位，见 docs §3.28）。
 class IMEM : public Memory {
 private:
-  IMEMRequest IMEMBuffer[IMEM_CAP];
-  uint8_t head;
-  uint8_t count;
+  IMEMRequest IMEMreqs[IMEM_CAP];
+  uint8_t head = 0;
+  uint8_t count = 0;
+  uint32_t programCounter = 0;
+  bool haltFetched = false;
 
 public:
-  IMEM() = default;
-  IMEM(const Memory &mem) : Memory(mem) {}
+  IMEM() { std::memset(IMEMreqs, 0, sizeof(IMEMreqs)); }
+  IMEM(const Memory &mem) : Memory(mem) {
+    std::memset(IMEMreqs, 0, sizeof(IMEMreqs));
+  }
   IMEM(const IMEM &) = default;
   IMEM &operator=(const IMEM &) = default;
 
@@ -41,7 +46,22 @@ public:
            (static_cast<uint32_t>(read_data(pc + 3)) << 24);
   }
   void clear();
-  void push();
-  void work(const IMEMInput&, systemState&);
+  void snapshotFrom(const IMEM &other);
+  uint8_t getHead() const { return head; }
+  uint8_t getCount() const { return count; }
+  uint32_t getPC() const { return programCounter; }
+  bool isHaltFetched() const { return haltFetched; }
+  bool isRequestFull() const { return count == IMEM_CAP; }
+  bool isReturnReady() const {
+    return count > 0 && IMEMreqs[head].valid &&
+           IMEMreqs[head].remain_cycle == 0;
+  }
+  uint32_t returnRaw() const { return IMEMreqs[head].raw_inst; }
+  int32_t returnPC() const { return IMEMreqs[head].PC; }
+  int32_t returnPredictPC() const { return IMEMreqs[head].predictPC; }
+  BranchPredictorSnapshot returnCkpt() const { return IMEMreqs[head].ckpt; }
+  void pop();
+  void pushRequest(uint32_t pc, int32_t predictPC,
+                   const BranchPredictorSnapshot &);
+  void tick(const IMEMInput &, systemState &);
 };
-#endif // IMEM_HPP

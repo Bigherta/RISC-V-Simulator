@@ -52,7 +52,7 @@ public:
     }
   }
 
-  inline uint32_t hex2uint32(int len, char hex[]);
+  inline uint32_t hex2uint32(int len, char hex[]) const;
   
   uint8_t read_data(uint32_t addr) const {
     if (addr >= MEM_SIZE)
@@ -68,7 +68,7 @@ public:
     return std::memcmp(mem, other.mem, MEM_SIZE) == 0;
   }
 };
-inline uint32_t Memory::hex2uint32(int len, char hex[]) {
+inline uint32_t Memory::hex2uint32(int len, char hex[]) const {
   uint32_t result = 0;
   for (int i = 0; i < len; i++) {
     result *= 0x10;

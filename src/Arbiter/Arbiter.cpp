@@ -83,7 +83,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
       CPUstate.flushArbiter.receive(BranchSquash);
   }
 
-  CDBOutput cdbOut = input.cdbArbiter;
+  CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
@@ -109,6 +109,45 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
       }
     }
   }
+}
+
+CDBOutput CDBArbiter::build(const ALU &ALUModule, const LSQ &LSQModule,
+                            const SquashInfo &squash) {
+  CDBCandidate aluCand{};
+  if (!ALUModule.isEmpty()) {
+    aluCand.valid = true;
+    aluCand.result.value = ALUModule.headValue();
+    aluCand.result.robIndex = ALUModule.headRobIndex();
+    aluCand.result.robSeq = ALUModule.headRobSeq();
+    aluCand.result.isControl = ALUModule.headIsControl();
+  }
+  CDBCandidate lsqCand{};
+  auto lsqCDBDetect = LSQModule.CDBDetect();
+  if (lsqCDBDetect != -1) {
+    lsqCand.valid = true;
+    lsqCand.result.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
+    lsqCand.result.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
+    lsqCand.result.value = LSQModule.getValue(lsqCDBDetect);
+  }
+  return arbitrate(aluCand, lsqCand, squash);
+}
+
+CDBBus CDBBus::build(const CDBOutput &cdbOut, const ROB &ROBModule,
+                     const PRF &PRFModule, const SquashInfo &squashDetect) {
+  CDBBus cdbBus{};
+  if (cdbOut.valid) {
+    auto &r = cdbOut.result;
+    bool guard = !squashDetect.needSquash || r.robSeq < squashDetect.SquashSeq;
+    bool robOk = !ROBModule.isEmpty() && r.robSeq >= ROBModule.headSeq();
+    cdbBus.broadcastValid = guard && (!r.isControl || robOk);
+    cdbBus.broadcastValue =
+        r.isControl ? PRFModule.getValue(ROBModule.getNewPhy(r.robIndex))
+                    : r.value;
+    cdbBus.lsqSetCDB = guard && cdbOut.lsqGranted;
+    cdbBus.robIndex = r.robIndex;
+    cdbBus.robSeq = r.robSeq;
+  }
+  return cdbBus;
 }
 
 CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,

@@ -1,4 +1,5 @@
 #include "../include/FetchQueue.hpp"
+#include "../include/CPU.hpp"
 #include <cstdint>
 #include <stdexcept>
 
@@ -53,4 +54,19 @@ uint8_t FetchQueue::getTail() const { return tail; }
 void FetchQueue::clear() {
   std::memset(this, 0, sizeof(*this));
   head = tail = 0;
+}
+
+void FetchQueue::tick(const FQInput&input, systemState & CPUstate){
+  if (input.squashDetect.needSquash) {
+    CPUstate.FQModule.clear(); 
+    return;
+  }
+  if (input.IMEMModule.isReturnReady()) {
+    if (!input.haltFetched && !isFull()) {
+      uint32_t raw = input.IMEMModule.returnRaw();
+      int32_t pc = input.IMEMModule.returnPC();
+      int32_t predPC = input.IMEMModule.returnPredictPC();
+      CPUstate.FQModule.push(raw, pc, predPC, input.IMEMModule.returnCkpt());
+    }
+  }
 }

@@ -49,7 +49,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   ├── testcases/                 # 18 个官方测试点（.c 源码 + .data 机器码 + .dump 反汇编）
 │   └── golden/                    # 基线（返回值 + 时钟数）
 ├── test/                          # 乱序执行一致性测试（独立构建，不影响 OJ 提交）
-│   ├── reorder_test.cpp           # 以任意顺序调用 13 个流水级的测试驱动
+│   ├── reorder_test.cpp           # 以任意顺序调用 14 个流水级的测试驱动
 │   ├── CMakeLists.txt
 │   └── test_reorder.sh            # 一致性测试脚本
 ├── test.sh                        # 代码行为测试脚本（返回值 / 分支正确率 / 时钟数）
@@ -101,7 +101,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ### 5.1 乱序执行一致性测试 — `test/test_reorder.sh`
 
-`test/reorder_test` 以**任意顺序**调用 13 个流水级（rat / lsq / decode / fetch / agu / bru / bp / dmem / alu / rs / rob / prf / arb），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
+`test/reorder_test` 以**任意顺序**调用 14 个流水级（rat / lsq / decode / agu / bru / bp / dmem / alu / rs / rob / prf / arb / imem / fq），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
 
 构建（独立于根目录，不影响 OJ 提交）：
 

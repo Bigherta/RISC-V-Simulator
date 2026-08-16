@@ -18,6 +18,8 @@ struct ROBEntry {
   uint32_t predictedPC = 0;
   int32_t pc = 0;
   bool halt = false;
+  bool isCall = false;  // JAL rd==1（RAS 压栈类型）
+  bool isRet = false;   // JALR x0, 0(x1)（RAS 弹栈类型）
   uint8_t lsqTailSnapshot = 0;
   Checkpoint ckpt{};
   int newPhy = -1;
@@ -34,7 +36,7 @@ struct ROBEntry {
 struct IssuePacket;
 struct ROBInput {
   SquashInfo squashDetect;
-  CDBOutput cdbArbiter;
+  CDBOutput cdbOut;
   const BRU &BRUModule;
   const LSQ &LSQModule;
   const IssuePacket &issuePacket;
@@ -50,10 +52,14 @@ private:
   uint8_t head = 0;
   uint8_t tail = 0;
   uint64_t next_seq = 1;
+  bool haltCommitted = false;
+  int haltRd = -1;
 
 public:
   bool isFull() const;
   bool isEmpty() const;
+  bool isHaltCommitted() const { return haltCommitted; }
+  int getHaltRd() const { return haltRd; }
   bool isHeadCommitReady() const;
   uint64_t headSeq() const;
   uint64_t getNextSeq() const { return next_seq; }
@@ -75,6 +81,8 @@ public:
   uint32_t getFlHeadSeqCkpt(int index) const;
   int getNewPhy(int index) const;
   int getOldPhy(int index) const;
+  bool getIsCall(int index) const;
+  bool getIsRet(int index) const;
   void setROBCommitReady(int index);
   void flush(int squashIndex);
   void tick(const ROBInput &, systemState &);

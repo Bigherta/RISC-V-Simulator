@@ -78,7 +78,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
       }
     }
   }
-  CDBOutput cdbOut = input.cdbArbiter;
+  CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         cdbOut.result.robSeq < input.squashDetect.SquashSeq) {

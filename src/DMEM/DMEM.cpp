@@ -10,7 +10,7 @@ void DMEM::snapshotFrom(const DMEM& other) {
   MemOutputBuffer = other.MemOutputBuffer;
 }
 
-int32_t DMEM::load_n_bytes(uint32_t address, int n, bool isSigned) {
+int32_t DMEM::load_n_bytes(uint32_t address, int n, bool isSigned) const {
   int32_t result = 0;
   for (int i = 0; i < n; i++) {
     auto byte_data = static_cast<uint32_t>(read_data(address + i));

@@ -7,10 +7,10 @@
 CDBBypassResult IssueArbiter::CDBBypass(const IssueArbiterInput &input,
                                         int phy) {
   CDBBypassResult out{};
-  if (input.cdbout.valid && !input.cdbout.result.isControl &&
-      input.ROBModule.getNewPhy(input.cdbout.result.robIndex) == phy) {
+  if (input.cdbOut.valid && !input.cdbOut.result.isControl &&
+      input.ROBModule.getNewPhy(input.cdbOut.result.robIndex) == phy) {
     out.valid = true;
-    out.value = input.cdbout.result.value;
+    out.value = input.cdbOut.result.value;
   }
   return out;
 }
@@ -89,6 +89,8 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
     p.isControl = true;
     p.pc = inst.pc;
     p.robEntry.type = ROBType::LINK;
+    if (inst.rd == 0 && inst.rs1 == 1 && inst.imm == 0)
+      p.robEntry.isRet = true;  // JALR x0, 0(x1): return
     p.robEntry.ckpt.BPsnapshot = inst.BPSnapshot;
     auto prfSnap = input.RATModule.snapshotRAT_PRF();
     memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
@@ -144,6 +146,8 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
     p.isControl = true;
     p.pc = inst.pc;
     p.robEntry.type = ROBType::LINK;
+    if (inst.rd == 1)
+      p.robEntry.isCall = true;  // JAL with return address register
     p.robEntry.ckpt.BPsnapshot = inst.BPSnapshot;
     auto prfSnap = input.RATModule.snapshotRAT_PRF();
     memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,

@@ -5,45 +5,8 @@
 #include <cstring>
 #include <iostream>
 
-CPU::CPU(Memory mem) : CPUstate(mem), InstructMem(mem), DMEMModule(mem) {}
-
-void CPU::fetch() {
-  if (squashDetect.needSquash) {
-    CPUstate.FQModule.clear();
-    CPUstate.programCounter = squashDetect.SquashPC;
-    CPUstate.haltFetched = false;
-    return;
-  }
-  if (haltFetched)
-    return;
-  const auto raw_inst = InstructMem.read_inst(programCounter);
-  if (raw_inst == 0x0ff00513)
-    CPUstate.haltFetched = true;
-  if (!FQModule.isFull()) {
-    auto prediction = BPModule.predict(programCounter);
-    auto predictedPC =
-        prediction.taken ? prediction.predictPC : programCounter + 4;
-    auto ckpt = BPModule.snapshotCheckPoint();
-    auto opcode = raw_inst & 0x7F;
-    auto rd = (raw_inst >> 7) & 0x1F;
-    auto rs1 = (raw_inst >> 15) & 0x1F;
-    auto imm_i = (raw_inst >> 20) & 0xFFF;
-    if (opcode == 0b1101111 && rd == 1) {
-      if (!CPUstate.BPModule.RAS_full())
-        CPUstate.BPModule.RAS_push(programCounter + 4);
-    } else if (opcode == 0b1100111 && rd == 0 && rs1 == 1 && imm_i == 0) {
-      if (!CPUstate.BPModule.RAS_empty())
-        predictedPC = CPUstate.BPModule.RAS_pop();
-    }
-    if (opcode == 0b1100011)
-      CPUstate.BPModule.shiftGHR(prediction.taken);
-    else if (opcode == 0b1101111 || opcode == 0b1100111)
-      CPUstate.BPModule.shiftGHR(true);
-    CPUstate.FQModule.push(raw_inst, programCounter, predictedPC, ckpt);
-    CPUstate.programCounter = predictedPC;
-  }
-}
-
+CPU::CPU(Memory mem) : CPUstate(mem), InstructMem(mem), IMEMModule(mem),
+                       DMEMModule(mem) {}
 
 void CPU::read() {
   memcpy(&RSModule, &CPUstate.RSModule, sizeof(RSModule));
@@ -58,35 +21,25 @@ void CPU::read() {
          sizeof(DecodeUnitModule));
   memcpy(&PRFModule, &CPUstate.PRFModule, sizeof(PRFModule));
   memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
+  IMEMModule.snapshotFrom(CPUstate.IMEMModule);
   memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
   DMEMModule.snapshotFrom(CPUstate.DMEMModule);
-  programCounter = CPUstate.programCounter;
-  haltFetched = CPUstate.haltFetched;
-  haltCommitted = CPUstate.haltCommitted;
-  haltRd = CPUstate.haltRd;
   squashDetect = CPUstate.flushArbiter.arbitResult();
-  CDBCandidate aluCand{};
-  if (!ALUModule.isEmpty()) {
-    aluCand.valid = true;
-    aluCand.result.value = ALUModule.headValue();
-    aluCand.result.robIndex = ALUModule.headRobIndex();
-    aluCand.result.robSeq = ALUModule.headRobSeq();
-    aluCand.result.isControl = ALUModule.headIsControl();
-  }
-  CDBCandidate lsqCand{};
-  auto lsqCDBDetect = LSQModule.CDBDetect();
-  if (lsqCDBDetect != -1) {
-    lsqCand.valid = true;
-    lsqCand.result.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
-    lsqCand.result.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
-    lsqCand.result.value = LSQModule.getValue(lsqCDBDetect);
-  }
-  cdbArbiter = CDBArbiter::arbitrate(aluCand, lsqCand, squashDetect);
+  imemInput.squashDetect = squashDetect;
+  fetchDecision = FetchDecision::build(BPModule, IMEMModule.getPC(),
+                                       squashDetect, IMEMModule.isHaltFetched(),
+                                       FQModule.isFull(),
+                                       IMEMModule.isRequestFull());
+  imemInput.fetchDecision = fetchDecision;
+  fqInput.squashDetect = squashDetect;
+  fqInput.haltFetched = IMEMModule.isHaltFetched();
+  bpInput.fetchDecision = fetchDecision;
+  cdbOut = CDBArbiter::build(ALUModule, LSQModule, squashDetect);
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
       RSModule, ALUModule, AGUModule, BRUModule, ROBModule, squashDetect);
   aguInput.squashDetect = squashDetect;
   aluInput.squashDetect = squashDetect;
-  aluInput.cdbArbiter = cdbArbiter;
+  aluInput.cdbOut = cdbOut;
   aluInput.dispatch = dispatchBus.alu;
   aguInput.dispatch = dispatchBus.agu;
   bruInput.dispatch = dispatchBus.bru;
@@ -96,31 +49,19 @@ void CPU::read() {
   lsqInput.squashDetect = squashDetect;
   rsInput.squashDetect = squashDetect;
   robInput.squashDetect = squashDetect;
-  robInput.cdbArbiter = cdbArbiter;
+  robInput.cdbOut = cdbOut;
   prfInput.squashDetect = squashDetect;
-  prfInput.cdbArbiter = cdbArbiter;
+  prfInput.cdbOut = cdbOut;
   ratInput.squashDetect = squashDetect;
   flarbInput.squashDetect = squashDetect;
-  flarbInput.cdbArbiter = cdbArbiter;
+  flarbInput.cdbOut = cdbOut;
   isarbInput.squashDetect = squashDetect;
-  isarbInput.cdbout = cdbArbiter;
+  isarbInput.cdbOut = cdbOut;
   issuePacket = IssueArbiter::build(isarbInput);
   bruInput.squashDetect = squashDetect;
   bpInput.squashDetect = squashDetect;
-  bpInput.cdbArbiter = cdbArbiter;
-  CDBBus cdbBus{};
-  if (cdbArbiter.valid) {
-    auto &r = cdbArbiter.result;
-    bool guard = !squashDetect.needSquash || r.robSeq < squashDetect.SquashSeq;
-    bool robOk = !ROBModule.isEmpty() && r.robSeq >= ROBModule.headSeq();
-    cdbBus.broadcastValid = guard && (!r.isControl || robOk);
-    cdbBus.broadcastValue =
-        r.isControl ? PRFModule.getValue(ROBModule.getNewPhy(r.robIndex))
-                    : r.value;
-    cdbBus.lsqSetCDB = guard && cdbArbiter.lsqGranted;
-    cdbBus.robIndex = r.robIndex;
-    cdbBus.robSeq = r.robSeq;
-  }
+  bpInput.cdbOut = cdbOut;
+  CDBBus cdbBus = CDBBus::build(cdbOut, ROBModule, PRFModule, squashDetect);
   lsqInput.cdbBus = cdbBus;
   rsInput.cdbBus = cdbBus;
 }
@@ -155,7 +96,8 @@ void CPU::run() {
   uint64_t clock = 0;
   while (!finish) {
     read();
-    fetch();
+    IMEMModule.tick(imemInput, CPUstate);
+    FQModule.tick(fqInput, CPUstate);
     LSQModule.tick(lsqInput, CPUstate);
     ROBModule.tick(robInput, CPUstate);
     PRFModule.tick(prfInput, CPUstate);
@@ -170,18 +112,22 @@ void CPU::run() {
     DecodeUnitModule.tick(decodeInput, CPUstate);
     assert(checkPRFInvariant());
     ++clock;
-    finish = haltCommitted && FQModule.isEmpty() &&
+    finish = ROBModule.isHaltCommitted() && FQModule.isEmpty() &&
              DecodeUnitModule.isEmpty() && ROBModule.isEmpty();
   }
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);
   if (debug::enabled(debug::TOPIC_BRANCH))
-    debug::print("branch: %llu/%llu correct (%.2f%%)\n", CPUstate.branchCorrect,
-                 CPUstate.branchTotal,
-                 CPUstate.branchTotal
-                     ? 100.0 * CPUstate.branchCorrect / CPUstate.branchTotal
+    debug::print("branch: %llu/%llu correct (%.2f%%)\n",
+                 CPUstate.BPModule.getBranchCorrect(),
+                 CPUstate.BPModule.getBranchTotal(),
+                 CPUstate.BPModule.getBranchTotal()
+                     ? 100.0 * CPUstate.BPModule.getBranchCorrect() /
+                           CPUstate.BPModule.getBranchTotal()
                      : 0.0);
   std::cout << std::dec
-            << (PRFModule.getValue(RATModule.readRAT_PRF(haltRd)) & 0xFF)
+            << (PRFModule.getValue(
+                   RATModule.readRAT_PRF(ROBModule.getHaltRd())) &
+                0xFF)
             << std::endl;
 }

@@ -36,15 +36,10 @@ struct systemState {
   IMEM IMEMModule;
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
-  uint32_t programCounter;
-  bool haltFetched = false;
-  bool haltCommitted = false;
-  int haltRd = -1;
-  uint64_t branchTotal = 0;
-  uint64_t branchCorrect = 0;
 
-  systemState() : programCounter(0) {}
-  systemState(Memory mem) : DMEMModule(mem), programCounter(0) {}
+  systemState() = default;
+  systemState(Memory mem)
+      : DMEMModule(mem), IMEMModule(mem) {}
 };
 
 class CPU {
@@ -66,7 +61,7 @@ private:
   IMEM IMEMModule;
   BranchPredictor BPModule;
   FlushArbiter flushArbiter;
-  CDBOutput cdbArbiter;
+  CDBOutput cdbOut;
   IssuePacket issuePacket;
   AGUInput aguInput{LSQModule, RSModule};
   ALUInput aluInput{RSModule};
@@ -82,17 +77,15 @@ private:
   FlushArbiterInput flarbInput{BRUModule, ROBModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
                                RATModule,        PRFModule, LSQModule};
-  uint32_t programCounter;
   SquashInfo squashDetect;
-  bool haltFetched = false;
-  bool haltCommitted = false;
-  int haltRd = -1;
+  FetchDecision fetchDecision;
+  IMEMInput imemInput{FQModule};
+  FQInput fqInput{IMEMModule};
   bool checkPRFInvariant() const;
 
 public:
   CPU(Memory mem);
   void read();
-  void fetch();
   void run();
 };
 

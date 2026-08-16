@@ -28,7 +28,7 @@ public:
   DMEM& operator=(const DMEM&) = default;
 
   void snapshotFrom(const DMEM& other);
-  int32_t load_n_bytes(uint32_t address, int n, bool isSigned);
+  int32_t load_n_bytes(uint32_t address, int n, bool isSigned) const;
   void store_n_bytes(uint32_t address, int value, int n);
   bool MemPush(MemRequest request);
   void MemPull();

@@ -37,7 +37,7 @@ struct IssueArbiterInput {
   const RAT &RATModule;
   const PRF &PRFModule;
   const LSQ &LSQModule;
-  CDBOutput cdbout;
+  CDBOutput cdbOut;
   SquashInfo squashDetect;
   IssueArbiterInput(const DecodeUnit &DecodeUnitModule, const ROB &ROBModule,
                     const RSUnit &RSModule, const RAT &RATModule,

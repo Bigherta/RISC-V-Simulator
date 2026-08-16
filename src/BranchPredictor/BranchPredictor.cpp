@@ -4,6 +4,34 @@
 #include <cstring>
 #include <stdexcept>
 
+FetchDecision FetchDecision::build(const BranchPredictor &bp, uint32_t pc,
+                                   const SquashInfo &squash, bool haltFetched,
+                                   bool fqFull, bool imemReqFull) {
+  FetchDecision fdec{};
+  if (!squash.needSquash && !haltFetched && !fqFull && !imemReqFull) {
+    auto prediction = bp.predict(pc);
+    fdec.valid = true;
+    fdec.pc = pc;
+    fdec.predictedPC =
+        prediction.taken ? prediction.predictPC : pc + 4;
+    if (prediction.btbHit) {
+      fdec.shift = true;
+      if (prediction.isRet) {
+        fdec.shiftValue = true;
+      } else if (prediction.isCall) {
+        fdec.isCall = true;
+        fdec.shiftValue = true;
+      } else if (prediction.unconditional) {
+        fdec.shiftValue = true;
+      } else {
+        fdec.shiftValue = prediction.taken;
+      }
+    }
+    fdec.ckpt = bp.snapshotCheckPoint();
+  }
+  return fdec;
+}
+
 void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
   struct Cand {
     bool valid = false;
@@ -13,6 +41,8 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     int32_t target = 0;
     uint16_t ghr = 0;
     bool cond = true;
+    bool isCall = false;
+    bool isRet = false;
   } bru, cdb;
 
   // collect candidate 1: BRU (B-type branch completed)
@@ -22,10 +52,10 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     int pcResult = input.BRUModule.headPCResult();
     int pcFrom = input.BRUModule.headPCFrom();
     if (index >= 0) {
-      ++CPUstate.branchTotal;
+      ++CPUstate.BPModule.branchTotal;
       bool correct = pcResult == input.ROBModule.getPredictedPC(index);
       if (correct)
-        ++CPUstate.branchCorrect;
+        ++CPUstate.BPModule.branchCorrect;
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
            brRobSeq < input.squashDetect.SquashSeq)) {
@@ -39,7 +69,7 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     }
   }
   // collect candidate 2: CDB (JAL/JALR control transfer completed)
-  auto cdbOut = input.cdbArbiter;
+  auto cdbOut = input.cdbOut;
   if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
       cdbOut.result.robSeq >= input.ROBModule.headSeq()) {
     auto robIndex = cdbOut.result.robIndex;
@@ -48,10 +78,10 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
          robSeq < input.squashDetect.SquashSeq)) {
-      ++CPUstate.branchTotal;
+      ++CPUstate.BPModule.branchTotal;
       bool correct = pc == input.ROBModule.getPredictedPC(robIndex);
       if (correct)
-        ++CPUstate.branchCorrect;
+        ++CPUstate.BPModule.branchCorrect;
       cdb.valid = true;
       cdb.seq = robSeq;
       cdb.pc = input.ROBModule.getPC(robIndex);
@@ -59,23 +89,37 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
       cdb.target = static_cast<int32_t>(pc);
       cdb.ghr = input.ROBModule.getRASCkpt(robIndex).GHR_snapshot;
       cdb.cond = false;
+      cdb.isCall = input.ROBModule.getIsCall(robIndex);
+      cdb.isRet = input.ROBModule.getIsRet(robIndex);
     }
   }
 
   // direction-split: conditional branches train BHT/LHT/Gshare + BTB,
-  // JAL/JALR train only the BTB (with unconditional flag), so the direction
-  // tables are never polluted by always-taken jumps.
+  // JAL/JALR train only the BTB (with unconditional + call/ret type), so the
+  // direction tables are never polluted by always-taken jumps.
   auto apply = [&](const Cand &c) {
     if (c.cond)
       CPUstate.BPModule.update(c.pc, c.taken, c.target, c.ghr);
     else
-      CPUstate.BPModule.updateJump(c.pc, c.target);
+      CPUstate.BPModule.updateJump(c.pc, c.target, c.isCall, c.isRet);
   };
   // fixed order: BRU candidate first, CDB candidate second
   if (bru.valid)
     apply(bru);
   if (cdb.valid)
     apply(cdb);
+  // fetch decision consumption: GHR/RAS are advanced at the prediction beat
+  // (same cycle as the request was issued), so the LIFO pairing stays exact
+  // (the decision is a read()-side value -- order-independent).
+  const auto &fd = input.fetchDecision;
+  if (fd.valid) {
+    if (fd.isCall && !RAS_full())
+      CPUstate.BPModule.RAS_push(fd.pc + 4);
+    if (fd.isRet && !RAS_empty())
+      CPUstate.BPModule.pop();
+    if (fd.shift)
+      CPUstate.BPModule.shiftGHR(fd.shiftValue);
+  }
   // flush: restore GHR/RAS from the squashed branch's checkpoint
   // (tables keep the guarded updates above; only GHR/RAS are rewound).
   if (input.squashDetect.needSquash &&
@@ -83,7 +127,7 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     CPUstate.BPModule.recoverCheckPoint(
         input.ROBModule.getRASCkpt(input.squashDetect.SquashIndex));
 }
-PredictInfo BranchPredictor::predict(int32_t pc) {
+PredictInfo BranchPredictor::predict(int32_t pc) const {
   auto local_index = (pc >> 2) & (LHT_CAP - 1);
   auto global_index = ((pc >> 2) ^ GHR) & (PC_Direct_CAP - 1);
   auto BTB_index = (pc >> 2) & (PC_Direct_CAP - 1);
@@ -101,7 +145,12 @@ PredictInfo BranchPredictor::predict(int32_t pc) {
   if (taken && hit) {
     predictPC = BTB[BTB_index].target;
   }
-  return {taken, predictPC};
+  PredictInfo out{taken, predictPC};
+  out.btbHit = hit;
+  out.unconditional = hit && BTB[BTB_index].unconditional;
+  out.isCall = hit && BTB[BTB_index].isCall;
+  out.isRet = hit && BTB[BTB_index].isRet;
+  return out;
 }
 void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
                              uint16_t ghr) {
@@ -142,14 +191,19 @@ void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
     BTB[BTB_index].target = target;
     BTB[BTB_index].valid = true;
     BTB[BTB_index].unconditional = false;
+    BTB[BTB_index].isCall = false;  // 槽位复用：清 JAL/JALR 残留标志
+    BTB[BTB_index].isRet = false;
   }
 }
-void BranchPredictor::updateJump(int32_t pc, int32_t target) {
+void BranchPredictor::updateJump(int32_t pc, int32_t target, bool isCall,
+                                 bool isRet) {
   auto BTB_index = (pc >> 2) & (PC_Direct_CAP - 1);
   BTB[BTB_index].actualPC = pc;
   BTB[BTB_index].target = target;
   BTB[BTB_index].valid = true;
   BTB[BTB_index].unconditional = true;
+  BTB[BTB_index].isCall = isCall;
+  BTB[BTB_index].isRet = isRet;
 }
 void BranchPredictor::shiftGHR(bool taken) {
   GHR = ((GHR << 1) | (taken ? 1 : 0)) & HISTORY_MASK;
@@ -160,11 +214,18 @@ void BranchPredictor::RAS_push(uint32_t addr) {
   RAS[RAS_top++] = addr;
 }
 
-uint32_t BranchPredictor::RAS_pop() {
+uint32_t BranchPredictor::peek() const {
+  if (RAS_top == 0)
+    throw std::runtime_error(
+        "RAS underflow: peek on empty return-address stack");
+  return RAS[RAS_top - 1];
+}
+
+void BranchPredictor::pop() {
   if (RAS_top == 0)
     throw std::runtime_error(
         "RAS underflow: pop on empty return-address stack");
-  return RAS[--RAS_top];
+  --RAS_top;
 }
 
 bool BranchPredictor::RAS_empty() const { return RAS_top == 0; }

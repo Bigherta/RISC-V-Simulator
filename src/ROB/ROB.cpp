@@ -1,6 +1,5 @@
 #include "../include/ROB.hpp"
 #include "../include/CPU.hpp"
-#include "../include/util.hpp"
 #include <cassert>
 #include <cstdint>
 #include <stdexcept>
@@ -67,6 +66,10 @@ int ROB::getNewPhy(int index) const { return ROBqueue[index].newPhy; }
 
 int ROB::getOldPhy(int index) const { return ROBqueue[index].oldPhy; }
 
+bool ROB::getIsCall(int index) const { return ROBqueue[index].isCall; }
+
+bool ROB::getIsRet(int index) const { return ROBqueue[index].isRet; }
+
 bool ROB::isHeadCommitReady() const { return peek().isCommitReady; }
 
 uint64_t ROB::headSeq() const { return ROBqueue[head].seq; }
@@ -114,7 +117,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
     }
   }
   // CDB set ROB ready
-  CDBOutput cdbOut = input.cdbArbiter;
+  CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
@@ -136,7 +139,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   auto rob_entry = peek();
   CPUstate.ROBModule.pop();
   if (rob_entry.halt) {
-    CPUstate.haltCommitted = true;
-    CPUstate.haltRd = rob_entry.dest;
+    CPUstate.ROBModule.haltCommitted = true;
+    CPUstate.ROBModule.haltRd = rob_entry.dest;
   }
 }

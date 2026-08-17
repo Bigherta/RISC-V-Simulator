@@ -214,13 +214,6 @@ void BranchPredictor::RAS_push(uint32_t addr) {
   RAS[RAS_top++] = addr;
 }
 
-uint32_t BranchPredictor::peek() const {
-  if (RAS_top == 0)
-    throw std::runtime_error(
-        "RAS underflow: peek on empty return-address stack");
-  return RAS[RAS_top - 1];
-}
-
 void BranchPredictor::pop() {
   if (RAS_top == 0)
     throw std::runtime_error(

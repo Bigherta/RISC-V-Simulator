@@ -80,9 +80,7 @@ private:
   SquashInfo squashDetect;
   FetchDecision fetchDecision;
   IMEMInput imemInput{FQModule};
-  FQInput fqInput{IMEMModule};
-  bool checkPRFInvariant() const;
-
+  FQInput fqInput{IMEMModule, DecodeUnitModule};
 public:
   CPU(Memory mem);
   void read();

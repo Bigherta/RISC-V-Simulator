@@ -135,5 +135,4 @@ void DecodeUnit::tick(const DecodeInput &input, systemState &CPUstate){
   uop.BPSnapshot = input.FQModule.headBPSnapshot();
   uop.isHalt = (raw == 0x0ff00513);
   CPUstate.DecodeUnitModule.push(uop);
-  CPUstate.FQModule.pop();
 }

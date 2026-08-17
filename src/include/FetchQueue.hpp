@@ -9,11 +9,14 @@ struct FetchQueueEntry {
   BranchPredictorSnapshot BPsnapshot;
 };
 struct IMEM;
+struct DecodeUnit;
 struct FQInput {
   SquashInfo squashDetect;
   const IMEM &IMEMModule;
+  const DecodeUnit &DecodeUnitModule;
   bool haltFetched;
-  FQInput(const IMEM &imem) : IMEMModule(imem) {}
+  FQInput(const IMEM &imem, const DecodeUnit &du)
+      : IMEMModule(imem), DecodeUnitModule(du) {}
 };
 struct systemState;
 class FetchQueue {

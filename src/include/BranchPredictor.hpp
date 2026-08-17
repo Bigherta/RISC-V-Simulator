@@ -47,7 +47,6 @@ public:
   void updateJump(int32_t pc, int32_t target, bool isCall, bool isRet);
   void shiftGHR(bool taken);
   void RAS_push(uint32_t);
-  uint32_t peek() const;
   void pop();
   auto RAS_empty() const -> bool;
   auto RAS_full() const -> bool;

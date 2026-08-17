@@ -69,4 +69,6 @@ void FetchQueue::tick(const FQInput&input, systemState & CPUstate){
       CPUstate.FQModule.push(raw, pc, predPC, input.IMEMModule.returnCkpt());
     }
   }
+  if (!isEmpty() && !input.DecodeUnitModule.isFull())
+    CPUstate.FQModule.pop();
 }

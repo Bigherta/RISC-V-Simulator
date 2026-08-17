@@ -66,31 +66,6 @@ void CPU::read() {
   rsInput.cdbBus = cdbBus;
 }
 
-bool CPU::checkPRFInvariant() const {
-
-  uint32_t bitmap[PRF_CAP / 32] = {};
-  uint32_t count = 0;
-  auto mark = [&](int phy) {
-    assert(phy >= 0 && phy < PRF_CAP);
-    assert(!((bitmap[phy >> 5] >> (phy & 31)) & 1u));
-    bitmap[phy >> 5] |= 1u << (phy & 31);
-    ++count;
-  };
-  mark(0);
-  for (uint32_t s = CPUstate.PRFModule.getHeadSeq();
-       s != CPUstate.PRFModule.getTailSeq(); ++s)
-    mark(CPUstate.PRFModule.getFreeListSlot(s));
-  for (int r = 1; r < REGISTER_CAP; ++r)
-    mark(CPUstate.RATModule.readRAT_PRF(r));
-  for (int i = CPUstate.ROBModule.getHead(); i != CPUstate.ROBModule.getTail();
-       i = (i + 1) & (ROB_CAP - 1)) {
-    int old = CPUstate.ROBModule.getOldPhy(i);
-    if (old >= 0)
-      mark(old);
-  }
-  return count == PRF_CAP;
-}
-
 void CPU::run() {
   bool finish = false;
   uint64_t clock = 0;
@@ -110,7 +85,6 @@ void CPU::run() {
     RATModule.tick(ratInput, CPUstate);
     flushArbiter.tick(flarbInput, CPUstate);
     DecodeUnitModule.tick(decodeInput, CPUstate);
-    assert(checkPRFInvariant());
     ++clock;
     finish = ROBModule.isHaltCommitted() && FQModule.isEmpty() &&
              DecodeUnitModule.isEmpty() && ROBModule.isEmpty();

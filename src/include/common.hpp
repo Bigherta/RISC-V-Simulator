@@ -2,6 +2,7 @@
 #ifndef COMMON_HPP
 #define COMMON_HPP
 #include <cstdint>
+using RobTag = uint8_t;
 constexpr int INTEGERRS_CAP = 8;
 constexpr int STORERS_CAP = 4;
 constexpr int LOADRS_CAP = 4;
@@ -63,22 +64,20 @@ enum class RISC_V {
 
 struct ArithmeticCalculateResult {
   int32_t value;
-  int robIndex;
-  uint64_t robSeq;
+  RobTag robTag;
   bool isControl;
 };
 
 struct AddressCalculateResult {
   int32_t value;
-  int robIndex;
-  uint64_t robSeq;
+  RobTag robTag;
+  uint8_t lsqIndex;
 };
 
 struct BranchResult {
   int pcFrom;
   int pcResult;
-  int robIndex;
-  uint64_t robSeq;
+  RobTag robTag;
 };
 
 struct MemRequest {
@@ -88,14 +87,14 @@ struct MemRequest {
   uint32_t address;
   bool isSigned;
   int n_bytes;
-  int robIndex;
-  uint64_t robSeq;
+  uint8_t robTag;
+  uint8_t lsqIndex;
 };
 
 struct SquashInfo {
   bool needSquash = false;
   int SquashIndex = -1;
-  uint64_t SquashSeq = 0;
+  uint8_t SquashTag = 0;
   uint32_t SquashPC = 0;
 };
 
@@ -104,6 +103,7 @@ struct CDBOutput {
   bool valid;
   bool aluGranted;
   bool lsqGranted;
+  uint8_t lsqIndex = 0;
 };
 
 struct CDBBypassResult {
@@ -164,8 +164,7 @@ enum class RSType { Integer, Branch, Load, StoreAddr };
 struct DispatchInfo {
   bool valid = false;
   int rsIndex = -1;
-  int robIndex = -1;
-  uint64_t robSeq = 0;
+  uint8_t robTag = 0;
   RSType rsType = RSType::Integer;
 };
 struct DispatchBus {
@@ -177,10 +176,8 @@ struct CDBBus {
   bool broadcastValid = false;
   int broadcastValue = 0;
   bool lsqSetCDB = false;
-  int robIndex = -1;
-  uint64_t robSeq = 0;
-  // read() 边组合求值（同 CDBArbiter 模式）：广播判定与载荷一次打包，
-  // 消费者只"应用"不"重算"（定义见 Arbiter.cpp）。
+  RobTag robTag = 0;
+  uint8_t lsqIndex = 0;
   static CDBBus build(const CDBOutput &cdbOut, const ROB &ROBModule,
                       const PRF &PRFModule, const SquashInfo &squashDetect);
 };

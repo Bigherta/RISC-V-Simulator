@@ -18,6 +18,7 @@ struct FlushRequest {
 struct CDBCandidate {
   bool valid = false;
   ArithmeticCalculateResult result{};
+  uint8_t lsqIndex = 0;
 };
 
 struct systemState;
@@ -46,7 +47,7 @@ public:
   FlushArbiter();
   void receive(SquashInfo request);
   SquashInfo arbitResult() const;
-  void clear(uint64_t seq);
+  void clear(uint8_t tag);
   FlushRequest getRequest(int i) const;
   void tick(const FlushArbiterInput &, systemState &);
 };

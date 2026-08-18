@@ -30,7 +30,8 @@ int RSUnit::tryAllocBranch() const {
       return i;
   return -1;
 }
-void RSUnit::broadcast(const RSInput&input, systemState &CPUstate, int robIndex, int value) {
+void RSUnit::broadcast(const RSInput&input, systemState &CPUstate, RobTag robTag, int value) {
+  int robIndex = input.ROBModule.getIndexByTag(robTag);
   int phy = input.ROBModule.getNewPhy(robIndex);
   if (phy < 0)
     return; // no dest register: nothing to broadcast
@@ -122,22 +123,23 @@ void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
   }
 
   if (input.cdbBus.broadcastValid) {
-    broadcast(input, CPUstate, input.cdbBus.robIndex,
+    broadcast(input, CPUstate, input.cdbBus.robTag,
               input.cdbBus.broadcastValue);
   }
 
   if (input.squashDetect.needSquash) {
-    auto sq = input.squashDetect.SquashSeq;
+    auto sqTag = input.squashDetect.SquashTag;
     for (int i = 0; i < INTEGERRS_CAP; i++) {
       if (!integerRS[i].free &&
-          input.ROBModule.getSeq(integerRS[i].robIndex) > sq) {
+          ROB::isOlder(sqTag, integerRS[i].robTag)) {
         CPUstate.RSModule.integerRS[i].free = true;
         CPUstate.RSModule.integerRS[i].qj = -1;
         CPUstate.RSModule.integerRS[i].qk = -1;
       }
     }
     for (int i = 0; i < LOADRS_CAP; i++) {
-      if (!loadRS[i].free && input.ROBModule.getSeq(loadRS[i].robIndex) > sq) {
+      if (!loadRS[i].free &&
+          ROB::isOlder(sqTag, loadRS[i].robTag)) {
         CPUstate.RSModule.loadRS[i].free = true;
         CPUstate.RSModule.loadRS[i].qj = -1;
         CPUstate.RSModule.loadRS[i].qk = -1;
@@ -145,14 +147,14 @@ void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
     }
     for (int i = 0; i < STORERS_CAP; i++) {
       if (!storeAddressRS[i].free &&
-          input.ROBModule.getSeq(storeAddressRS[i].robIndex) > sq) {
+          ROB::isOlder(sqTag, storeAddressRS[i].robTag)) {
         CPUstate.RSModule.storeAddressRS[i].free = true;
         CPUstate.RSModule.storeAddressRS[i].qj = -1;
       }
     }
     for (int i = 0; i < BRANCHRS_CAP; i++) {
       if (!branchRS[i].free &&
-          input.ROBModule.getSeq(branchRS[i].robIndex) > sq) {
+          ROB::isOlder(sqTag, branchRS[i].robTag)) {
         CPUstate.RSModule.branchRS[i].free = true;
         CPUstate.RSModule.branchRS[i].qj = -1;
         CPUstate.RSModule.branchRS[i].qk = -1;
@@ -160,7 +162,7 @@ void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
     }
     for (int i = 0; i < STORERS_CAP; i++) {
       if (!storeValueRS[i].free &&
-          input.ROBModule.getSeq(storeValueRS[i].robIndex) > sq) {
+          ROB::isOlder(sqTag, storeValueRS[i].robTag)) {
         CPUstate.RSModule.storeValueRS[i].free = true;
         CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
       }

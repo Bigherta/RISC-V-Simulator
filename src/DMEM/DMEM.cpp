@@ -1,9 +1,8 @@
 #include "../include/DMEM.hpp"
 #include "../include/CPU.hpp"
-#include "../include/util.hpp"
 #include <stdexcept>
 
-void DMEM::snapshotFrom(const DMEM& other) {
+void DMEM::snapshotFrom(const DMEM &other) {
   busy = other.busy;
   bufferValid = other.bufferValid;
   MemExecution = other.MemExecution;
@@ -47,19 +46,15 @@ bool DMEM::isBusy() const { return busy; }
 
 bool DMEM::isReady() const { return bufferValid; }
 
-void DMEM::tick(const DMEMInput& input, systemState& next) {
+void DMEM::tick(const DMEMInput &input, systemState &next) {
   // output stage: consume the previous cycle's reply
   if (isReady()) {
     auto reply = MemReturn();
     if (reply.op == Operation::Load &&
         (!input.squashDetect.needSquash ||
-         reply.robSeq < input.squashDetect.SquashSeq)) {
-      auto index = input.LSQModule.getIndexBySeq(reply.robSeq);
-      if (index >= 0) {
-        if (debug::enabled(debug::TOPIC_MEM))
-          debug::print("MEM load @%u <- %d\n", reply.address, reply.value);
-        next.LSQModule.writeValue(reply.value, index);
-      }
+         ROB::isOlder(reply.robTag, input.squashDetect.SquashTag))) {
+      auto index = reply.lsqIndex;
+      next.LSQModule.writeValue(reply.value, index);
     }
     next.DMEMModule.MemPull();
   }
@@ -71,8 +66,8 @@ void DMEM::tick(const DMEMInput& input, systemState& next) {
   exec.remainCycle--;
   if (!exec.remainCycle) {
     if (exec.op == Operation::Load) {
-      exec.value = next.DMEMModule.load_n_bytes(
-          exec.address, exec.n_bytes, exec.isSigned);
+      exec.value = next.DMEMModule.load_n_bytes(exec.address, exec.n_bytes,
+                                                exec.isSigned);
     } else {
       next.DMEMModule.store_n_bytes(exec.address, exec.value, exec.n_bytes);
     }

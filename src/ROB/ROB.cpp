@@ -4,27 +4,50 @@
 #include <cstdint>
 #include <stdexcept>
 
-bool ROB::isFull() const { return ((tail + 1) & 0x3F) == head; }
+bool ROB::isOlder(RobTag tag_a, RobTag tag_b) {
+  if ((tag_a >> 6) != (tag_b >> 6))
+    return ((tag_a & 63) > (tag_b & 63));
+  return ((tag_a & 63) < (tag_b & 63));
+}
 
-bool ROB::isEmpty() const { return head == tail; }
+bool ROB::isYounger(RobTag tag_a, RobTag tag_b) { return isOlder(tag_b, tag_a); }
+
+int ROB::idx(RobTag t) { return t & 0x3F; }
+
+int ROB::getIndexByTag(RobTag tag) const {
+  assert(ROBqueue[idx(tag)].tag == tag);
+  return idx(tag);
+}
+
+bool ROB::isHaltCommitted() const { return haltCommitted; }
+
+int ROB::getHaltRd() const { return haltRd; }
+
+uint8_t ROB::getNextTag() const { return next_tag; }
+
+void ROB::updateNextTag() { next_tag = (next_tag + 1) & 0x7F; }
+
+bool ROB::isFull() const { return (head ^ next_tag) == 0x40; }
+
+bool ROB::isEmpty() const { return head == next_tag; }
 
 int ROB::push(ROBEntry entry) {
-  entry.seq = next_seq++;
-  ROBqueue[tail] = entry;
-  int index = tail;
-  tail = (tail + 1) & 0x3F;
+  entry.tag = next_tag;
+  ROBqueue[idx(next_tag)] = entry;
+  int index = idx(next_tag);
+  updateNextTag();
   return index;
 }
 
-void ROB::pop() { head = (head + 1) & 0x3F; }
+void ROB::pop() { head = (head + 1) & 0x7F; }
 
 ROBEntry ROB::peek() const {
   if (isEmpty())
     throw std::runtime_error("peek an empty ROB!");
-  return ROBqueue[head];
+  return ROBqueue[idx(head)];
 }
 
-uint64_t ROB::getSeq(int index) const { return ROBqueue[index].seq; }
+uint8_t ROB::getTag(int index) const { return ROBqueue[index].tag; }
 
 bool ROB::isCommitReadyAt(int index) const {
   return ROBqueue[index].isCommitReady;
@@ -72,13 +95,13 @@ bool ROB::getIsRet(int index) const { return ROBqueue[index].isRet; }
 
 bool ROB::isHeadCommitReady() const { return peek().isCommitReady; }
 
-uint64_t ROB::headSeq() const { return ROBqueue[head].seq; }
+uint8_t ROB::headTag() const { return head; }
 
 int ROB::getHead() const { return head; }
 
-int ROB::getTail() const { return tail; }
-
-void ROB::flush(int squashIndex) { tail = (squashIndex + 1) & 0x3F; }
+void ROB::flush(int squashIndex) {
+  next_tag = (ROBqueue[squashIndex].tag + 1) & 0x7F;
+}
 
 void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   // issue apply: push the pre-built ROB entry (robIndex >= 0 excludes the
@@ -89,12 +112,11 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   }
   // BRU set ROB ready
   if (!input.BRUModule.isEmpty()) {
-    int index = input.BRUModule.headRobIndex();
-    uint64_t brRobSeq = input.BRUModule.headRobSeq();
-    if (index >= 0 && (!input.squashDetect.needSquash ||
-                       (input.squashDetect.needSquash &&
-                        brRobSeq < input.squashDetect.SquashSeq))) {
-      CPUstate.ROBModule.setROBCommitReady(index);
+    uint8_t brRobTag = input.BRUModule.headRobTag();
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
+      CPUstate.ROBModule.setROBCommitReady(getIndexByTag(brRobTag));
     }
   }
   // LSQ set ROB ready
@@ -105,13 +127,13 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
     if (i == tail)
       break;
     if (input.LSQModule.isReadyToCommit(i)) {
-      auto lsqRobIndex = input.LSQModule.getRobIndex(i);
-      auto lsqSeq = input.LSQModule.getRobSeq(i);
+      auto lsqTag = input.LSQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           lsqSeq < input.squashDetect.SquashSeq)) {
-        if (!isEmpty() && lsqSeq >= headSeq()) {
-          CPUstate.ROBModule.setROBCommitReady(lsqRobIndex);
+           ROB::isOlder(lsqTag,
+                         input.squashDetect.SquashTag))) {
+        if (!isEmpty() && !ROB::isOlder(lsqTag, headTag())) {
+          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(lsqTag));
         }
       }
     }
@@ -120,10 +142,11 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
-        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
-      auto robIndex = cdbOut.result.robIndex;
-      auto robSeq = cdbOut.result.robSeq;
-      if (!isEmpty() && robSeq >= headSeq()) {
+        ROB::isOlder(cdbOut.result.robTag,
+                         input.squashDetect.SquashTag)) {
+      auto robIndex = getIndexByTag(cdbOut.result.robTag);
+      if (!isEmpty() &&
+          !ROB::isOlder(cdbOut.result.robTag, headTag())) {
         CPUstate.ROBModule.setROBCommitReady(robIndex);
       }
     }
@@ -135,7 +158,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   }
   if (isEmpty() || !isHeadCommitReady())
     return;
-  int headIdx = getHead();
+  int headIdx = idx(getHead());
   auto rob_entry = peek();
   CPUstate.ROBModule.pop();
   if (rob_entry.halt) {

@@ -11,19 +11,30 @@ struct systemState;
 // BP update arbitration input: both table-training sources (BRU branch results
 // and CDB JAL/JALR transfers) converge to this single point so that the two
 // update calls keep a fixed order (BRU candidate first) regardless of stage
-// scheduling order (see AGENTS.md "BP 更新（多写端）").
+// scheduling order.
 struct BPUpdateInput {
   const BRU &BRUModule;
   CDBOutput cdbOut;
   const ROB &ROBModule;
   SquashInfo squashDetect;
-  FetchDecision fetchDecision;   // read() 边组合求值的预测决策（GHR/RAS 推进源）
+  FetchDecision fetchDecision;
   BPUpdateInput(const BRU &bru, const ROB &rob)
       : BRUModule(bru), ROBModule(rob) {}
 };
 
 class BranchPredictor {
 private:
+  struct Cand {
+    bool valid = false;
+    uint64_t seq = 0;
+    int32_t pc = 0;
+    bool taken = false;
+    int32_t target = 0;
+    uint16_t ghr = 0;
+    bool cond = true;
+    bool isCall = false;
+    bool isRet = false;
+  };
   uint8_t globalPHT[PC_Direct_CAP] = {};
   uint8_t LHT[LHT_CAP] = {};
   uint8_t localPHT[LOCAL_PHT_CAP] = {};
@@ -34,6 +45,7 @@ private:
   uint16_t GHR = 0;
   uint64_t branchTotal = 0;
   uint64_t branchCorrect = 0;
+
 public:
   BranchPredictor() {
     std::memset(globalPHT, 1, sizeof(globalPHT));
@@ -51,7 +63,7 @@ public:
   auto RAS_empty() const -> bool;
   auto RAS_full() const -> bool;
   BranchPredictorSnapshot snapshotCheckPoint() const;
-  void recoverCheckPoint(const BranchPredictorSnapshot&);
+  void recoverCheckPoint(const BranchPredictorSnapshot &);
   void tick(const BPUpdateInput &, systemState &);
 };
 #endif // BRANCHPREDICTOR_HPP

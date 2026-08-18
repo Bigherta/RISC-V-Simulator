@@ -1,8 +1,8 @@
 #include "../include/ALU.hpp"
 #include "../include/CPU.hpp"
 #include <cstdint>
-void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex,
-               uint64_t robSeq, bool isControl) {
+void ALU::push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
+               bool isControl) {
   int32_t value;
   if (isControlOp(op)) {
     value = op1 + op2;
@@ -47,7 +47,7 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, int robIndex,
       break;
     }
   }
-  ArithmeticCalculateResult result{value, robIndex, robSeq, isControl};
+  ArithmeticCalculateResult result{value, robTag, isControl};
   for (int i = 0; i < ALU_CAP; i++)
     if (!slotValid[i]) {
       outputBuffer[i] = result;
@@ -60,34 +60,28 @@ int32_t ALU::headValue() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].value : 0;
 }
-int ALU::headRobIndex() const {
+uint8_t ALU::headRobTag() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
-  return best >= 0 ? outputBuffer[best].robIndex : -1;
-}
-uint64_t ALU::headRobSeq() const {
-  int best = -1;
-  for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
-      best = i;
-  }
-  return best >= 0 ? outputBuffer[best].robSeq : 0;
+  return best >= 0 ? outputBuffer[best].robTag : 0;
 }
 bool ALU::headIsControl() const {
   int best = -1;
   for (int i = 0; i < ALU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].isControl : false;
@@ -109,33 +103,34 @@ bool ALU::isEmpty() const {
   return true;
 }
 
-void ALU::remove(uint64_t robSeq) {
+void ALU::remove(uint8_t robTag) {
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robSeq == robSeq) {
+    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
       slotValid[i] = false;
       return;
     }
   }
 }
 
-void ALU::flush(uint64_t seq) {
+void ALU::flush(uint8_t tag) {
   for (int i = 0; i < ALU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robSeq > seq)
+    if (slotValid[i] && !ROB::isOlder(outputBuffer[i].robTag, tag))
       slotValid[i] = false;
   }
 }
 void ALU::tick(const ALUInput &input, systemState &CPUstate) {
   if (input.dispatch.valid) {
     auto &rs = input.RSModule.integerRS[input.dispatch.rsIndex];
-    CPUstate.ALUModule.push(rs.vj, rs.vk, rs.op, rs.robIndex,
-                            input.dispatch.robSeq, isControlOp(rs.op));
+    CPUstate.ALUModule.push(rs.vj, rs.vk, rs.op,
+                            input.dispatch.robTag,
+                            isControlOp(rs.op));
   }
   // ALU writeBack: consume this unit's own grant on the CDB result.
   if (input.cdbOut.valid && input.cdbOut.aluGranted) {
-    CPUstate.ALUModule.remove(input.cdbOut.result.robSeq);
+    CPUstate.ALUModule.remove(input.cdbOut.result.robTag);
   }
   // clear the wrong ALU outputBuffer
   if (input.squashDetect.needSquash) {
-    CPUstate.ALUModule.flush(input.squashDetect.SquashSeq);
+    CPUstate.ALUModule.flush(input.squashDetect.SquashTag);
   }
 }

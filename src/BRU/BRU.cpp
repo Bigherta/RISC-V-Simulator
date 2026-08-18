@@ -1,9 +1,8 @@
 #include "../include/CPU.hpp"
-#include "../include/util.hpp"
 #include <cstdint>
 
 void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
-                     Operation op, int robIndex, uint64_t robSeq) {
+                     Operation op, RobTag robTag) {
   bool taken = false;
   switch (op) {
   case Operation::EQ:
@@ -28,7 +27,7 @@ void BRU::BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
     taken = false;
     break;
   }
-  push({pc, taken ? pc + imm : pc + 4, robIndex, robSeq});
+  push({pc, taken ? pc + imm : pc + 4, robTag});
 }
 
 void BRU::push(BranchResult result) {
@@ -44,7 +43,8 @@ int32_t BRU::headPCFrom() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].pcFrom : 0;
@@ -53,28 +53,21 @@ int32_t BRU::headPCResult() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
   return best >= 0 ? outputBuffer[best].pcResult : 0;
 }
-int BRU::headRobIndex() const {
+uint8_t BRU::headRobTag() const {
   int best = -1;
   for (int i = 0; i < BRU_CAP; i++) {
     if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
+        (best == -1 ||
+         ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
-  return best >= 0 ? outputBuffer[best].robIndex : -1;
-}
-uint64_t BRU::headRobSeq() const {
-  int best = -1;
-  for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] &&
-        (best == -1 || outputBuffer[i].robSeq < outputBuffer[best].robSeq))
-      best = i;
-  }
-  return best >= 0 ? outputBuffer[best].robSeq : 0;
+  return best >= 0 ? outputBuffer[best].robTag : 0;
 }
 
 bool BRU::isFull() const {
@@ -93,18 +86,18 @@ bool BRU::isEmpty() const {
   return true;
 }
 
-void BRU::remove(uint64_t robSeq) {
+void BRU::remove(uint8_t robTag) {
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robSeq == robSeq) {
+    if (slotValid[i] && outputBuffer[i].robTag == robTag) {
       slotValid[i] = false;
       return;
     }
   }
 }
 
-void BRU::flush(uint64_t seq) {
+void BRU::flush(uint8_t tag) {
   for (int i = 0; i < BRU_CAP; i++) {
-    if (slotValid[i] && outputBuffer[i].robSeq > seq)
+    if (slotValid[i] && !ROB::isOlder(outputBuffer[i].robTag, tag))
       slotValid[i] = false;
   }
 }
@@ -115,15 +108,15 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate) {
   if (input.dispatch.valid) {
     auto &rs = input.RSModule.branchRS[input.dispatch.rsIndex];
     CPUstate.BRUModule.BRUExecute(rs.vj, rs.vk, rs.pc, rs.imm, rs.op,
-                                  rs.robIndex, input.dispatch.robSeq);
+                                  input.dispatch.robTag);
   }
   // BRU writeBack
   if (!isEmpty()) {
-    uint64_t brRobSeq = headRobSeq();
-    CPUstate.BRUModule.remove(brRobSeq);
+    uint8_t brRobTag = headRobTag();
+    CPUstate.BRUModule.remove(brRobTag);
   }
   // clear the wrong BRU outputBuffer
   if (input.squashDetect.needSquash) {
-    CPUstate.BRUModule.flush(input.squashDetect.SquashSeq);
+    CPUstate.BRUModule.flush(input.squashDetect.SquashTag);
   }
 }

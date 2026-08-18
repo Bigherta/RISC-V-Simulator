@@ -61,13 +61,14 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
     if (i == tail)
       break;
     if (input.LSQModule.isReadyToCommit(i)) {
-      auto lsqRobIndex = input.LSQModule.getRobIndex(i);
-      auto lsqSeq = input.LSQModule.getRobSeq(i);
+      auto lsqTag = input.LSQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           lsqSeq < input.squashDetect.SquashSeq)) {
-        if (!input.ROBModule.isEmpty() && lsqSeq >= input.ROBModule.headSeq()) {
-          int newPhy = input.ROBModule.getNewPhy(lsqRobIndex);
+           ROB::isOlder(lsqTag, input.squashDetect.SquashTag))) {
+        if (!input.ROBModule.isEmpty() &&
+            !ROB::isOlder(lsqTag, input.ROBModule.headTag())) {
+          int newPhy = input.ROBModule.getNewPhy(
+              input.ROBModule.getIndexByTag(lsqTag));
           if (newPhy >= 0) {
             CPUstate.PRFModule.write(newPhy, input.LSQModule.getValue(i));
             if (debug::enabled(debug::TOPIC_PRF))
@@ -81,8 +82,8 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
-        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
-      auto robIndex = cdbOut.result.robIndex;
+        ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
+      auto robIndex = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
       auto isControl = cdbOut.result.isControl;
       if (!isControl) {
         auto value = cdbOut.result.value;
@@ -120,7 +121,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   }
   if (input.ROBModule.isEmpty() || !input.ROBModule.isHeadCommitReady())
     return;
-  int headIdx = input.ROBModule.getHead();
+  int headIdx = ROB::idx(input.ROBModule.getHead());
   auto rob_entry = input.ROBModule.peek();
   if (rob_entry.halt) {
   } else if (rob_entry.type == ROBType::REGISTER ||

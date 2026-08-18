@@ -21,14 +21,13 @@ public:
   bool isFull() const;
   bool isEmpty() const;
   void BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
-                  Operation op, int robIndex, uint64_t robSeq);
+                  Operation op, RobTag robTag);
   void push(BranchResult);
-  void remove(uint64_t robSeq);
-  void flush(uint64_t seq);
+  void remove(uint8_t robTag);
+  void flush(uint8_t tag);
   int32_t headPCFrom() const;
   int32_t headPCResult() const;
-  int headRobIndex() const;
-  uint64_t headRobSeq() const;
+  uint8_t headRobTag() const;
   bool isValid(int index) const { return slotValid[index]; }
   void tick(const BRUInput&, systemState&);
 };

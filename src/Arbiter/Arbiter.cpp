@@ -20,7 +20,8 @@ void FlushArbiter::receive(SquashInfo request) {
   if (w == FLUSHARBITER_CAP)
     throw std::runtime_error("flush arbiter overload!");
   int pos = 0;
-  while (pos < w && requests[pos].requestArgs.SquashSeq < request.SquashSeq)
+  while (pos < w &&
+         ROB::isOlder(requests[pos].requestArgs.SquashTag, request.SquashTag))
     ++pos;
   for (int i = FLUSHARBITER_CAP - 1; i > pos; --i)
     requests[i] = requests[i - 1];
@@ -30,22 +31,22 @@ void FlushArbiter::receive(SquashInfo request) {
 
 SquashInfo FlushArbiter::arbitResult() const {
   SquashInfo result{};
-  uint64_t minSeq = ~0ull >> 1;
+  bool found = false;
   for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
     if (requests[i].valid) {
-      if (requests[i].requestArgs.SquashSeq < minSeq) {
+      if (!found || ROB::isOlder(requests[i].requestArgs.SquashTag, result.SquashTag)) {
         result = requests[i].requestArgs;
-        minSeq = requests[i].requestArgs.SquashSeq;
+        found = true;
       }
     }
   }
   return result;
 }
 
-void FlushArbiter::clear(uint64_t seq) {
+void FlushArbiter::clear(uint8_t tag) {
   for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
     if (requests[i].valid) {
-      if (requests[i].requestArgs.SquashSeq >= seq) {
+      if (!ROB::isOlder(requests[i].requestArgs.SquashTag, tag)) {
         requests[i].valid = false;
       }
     }
@@ -56,27 +57,26 @@ FlushRequest FlushArbiter::getRequest(int i) const { return requests[i]; }
 
 void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
   if (input.squashDetect.needSquash)
-    CPUstate.flushArbiter.clear(input.squashDetect.SquashSeq);
+    CPUstate.flushArbiter.clear(input.squashDetect.SquashTag);
 
   if (!input.BRUModule.isEmpty()) {
     SquashInfo BranchSquash;
-    int index = input.BRUModule.headRobIndex();
-    uint64_t brRobSeq = input.BRUModule.headRobSeq();
+    uint8_t brRobTag = input.BRUModule.headRobTag();
     int pcResult = input.BRUModule.headPCResult();
     int pcFrom = input.BRUModule.headPCFrom();
-    if (index >= 0 && (!input.squashDetect.needSquash ||
-                       (input.squashDetect.needSquash &&
-                        brRobSeq < input.squashDetect.SquashSeq))) {
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
       auto actualPC = pcResult;
-      if (actualPC != input.ROBModule.getPredictedPC(index)) {
+      if (actualPC != input.ROBModule.getPredictedPC(
+                          input.ROBModule.getIndexByTag(brRobTag))) {
         if (debug::enabled(debug::TOPIC_BRANCH))
-          debug::print("squash seq=%llu pc=%u (from %u)\n",
-                       static_cast<unsigned long long>(brRobSeq), actualPC,
+          debug::print("squash tag=%u pc=%u (from %u)\n", brRobTag, actualPC,
                        pcFrom);
         BranchSquash.needSquash = true;
         BranchSquash.SquashPC = actualPC;
-        BranchSquash.SquashIndex = index;
-        BranchSquash.SquashSeq = brRobSeq;
+        BranchSquash.SquashIndex = input.ROBModule.getIndexByTag(brRobTag);
+        BranchSquash.SquashTag = brRobTag;
       }
     }
     if (BranchSquash.needSquash)
@@ -86,23 +86,24 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
   CDBOutput cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
-        cdbOut.result.robSeq < input.squashDetect.SquashSeq) {
-      auto robIndex = cdbOut.result.robIndex;
-      auto robSeq = cdbOut.result.robSeq;
+        ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
       auto isControl = cdbOut.result.isControl;
 
-      if (!input.ROBModule.isEmpty() && robSeq >= input.ROBModule.headSeq() &&
+      if (!input.ROBModule.isEmpty() &&
+          !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.headTag()) &&
           isControl) {
         SquashInfo JumpSquash;
         const auto pc = static_cast<uint32_t>(cdbOut.result.value);
-        if (pc != input.ROBModule.getPredictedPC(robIndex)) {
+        if (pc != input.ROBModule.getPredictedPC(input.ROBModule.getIndexByTag(
+                     cdbOut.result.robTag))) {
           if (debug::enabled(debug::TOPIC_BRANCH))
-            debug::print("squash seq=%llu pc=%u (jalr)\n",
-                         static_cast<unsigned long long>(robSeq), pc);
+            debug::print("squash tag=%u pc=%u (jalr)\n",
+                         cdbOut.result.robTag, pc);
           JumpSquash.needSquash = true;
           JumpSquash.SquashPC = pc;
-          JumpSquash.SquashIndex = robIndex;
-          JumpSquash.SquashSeq = robSeq;
+          JumpSquash.SquashIndex =
+              input.ROBModule.getIndexByTag(cdbOut.result.robTag);
+          JumpSquash.SquashTag = cdbOut.result.robTag;
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
@@ -117,16 +118,15 @@ CDBOutput CDBArbiter::build(const ALU &ALUModule, const LSQ &LSQModule,
   if (!ALUModule.isEmpty()) {
     aluCand.valid = true;
     aluCand.result.value = ALUModule.headValue();
-    aluCand.result.robIndex = ALUModule.headRobIndex();
-    aluCand.result.robSeq = ALUModule.headRobSeq();
+    aluCand.result.robTag = ALUModule.headRobTag();
     aluCand.result.isControl = ALUModule.headIsControl();
   }
   CDBCandidate lsqCand{};
   auto lsqCDBDetect = LSQModule.CDBDetect();
   if (lsqCDBDetect != -1) {
     lsqCand.valid = true;
-    lsqCand.result.robIndex = LSQModule.getRobIndex(lsqCDBDetect);
-    lsqCand.result.robSeq = LSQModule.getRobSeq(lsqCDBDetect);
+    lsqCand.lsqIndex = static_cast<uint8_t>(lsqCDBDetect);
+    lsqCand.result.robTag = LSQModule.getRobTag(lsqCDBDetect);
     lsqCand.result.value = LSQModule.getValue(lsqCDBDetect);
   }
   return arbitrate(aluCand, lsqCand, squash);
@@ -137,15 +137,20 @@ CDBBus CDBBus::build(const CDBOutput &cdbOut, const ROB &ROBModule,
   CDBBus cdbBus{};
   if (cdbOut.valid) {
     auto &r = cdbOut.result;
-    bool guard = !squashDetect.needSquash || r.robSeq < squashDetect.SquashSeq;
-    bool robOk = !ROBModule.isEmpty() && r.robSeq >= ROBModule.headSeq();
+    bool guard =
+        !squashDetect.needSquash ||
+        ROB::isOlder(r.robTag, squashDetect.SquashTag);
+    bool robOk = !ROBModule.isEmpty() &&
+                 !ROB::isOlder(r.robTag, ROBModule.headTag());
     cdbBus.broadcastValid = guard && (!r.isControl || robOk);
     cdbBus.broadcastValue =
-        r.isControl ? PRFModule.getValue(ROBModule.getNewPhy(r.robIndex))
-                    : r.value;
+        r.isControl
+            ? PRFModule.getValue(ROBModule.getNewPhy(
+                  ROBModule.getIndexByTag(r.robTag)))
+            : r.value;
     cdbBus.lsqSetCDB = guard && cdbOut.lsqGranted;
-    cdbBus.robIndex = r.robIndex;
-    cdbBus.robSeq = r.robSeq;
+    cdbBus.robTag = r.robTag;
+    cdbBus.lsqIndex = cdbOut.lsqIndex;
   }
   return cdbBus;
 }
@@ -154,15 +159,17 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
                                 const CDBCandidate &lsqCandidate,
                                 const SquashInfo &squash) {
   bool needSquash = squash.needSquash;
-  uint64_t squashSeq = squash.SquashSeq;
+  uint8_t squashTag = squash.SquashTag;
   bool aluValid = aluCandidate.valid;
   ArithmeticCalculateResult aluResult = aluCandidate.result;
-  if (aluValid && needSquash && aluResult.robSeq > squashSeq)
+  if (aluValid && needSquash &&
+      !ROB::isOlder(aluResult.robTag, squashTag))
     aluValid = false;
 
   bool lsqValid = lsqCandidate.valid;
   ArithmeticCalculateResult lsqResult = lsqCandidate.result;
-  if (lsqValid && needSquash && lsqResult.robSeq > squashSeq)
+  if (lsqValid && needSquash &&
+      !ROB::isOlder(lsqResult.robTag, squashTag))
     lsqValid = false;
   CDBOutput out = {};
 
@@ -180,10 +187,12 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
     out.result = lsqResult;
     out.valid = true;
     out.lsqGranted = true;
+    out.lsqIndex = lsqCandidate.lsqIndex;
     return out;
   }
 
-  if (aluResult.robSeq <= lsqResult.robSeq) {
+  if (ROB::isOlder(aluResult.robTag, lsqResult.robTag) ||
+      aluResult.robTag == lsqResult.robTag) {
     out.result = aluResult;
     out.valid = true;
     out.aluGranted = true;
@@ -191,6 +200,7 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
     out.result = lsqResult;
     out.valid = true;
     out.lsqGranted = true;
+    out.lsqIndex = lsqCandidate.lsqIndex;
   }
   return out;
 }
@@ -203,43 +213,41 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
   if (!ALU.isFull()) {
     bool foundAny = false;
     int best = -1;
-    uint64_t bestSeq = 0;
+    uint8_t bestTag = 0;
     for (int i = 0; i < INTEGERRS_CAP; ++i) {
       auto rs = RS.integerRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        auto seq = ROB.getSeq(rs.robIndex);
-        if (!foundAny || seq < bestSeq) {
+        auto tag = rs.robTag;
+        if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
           best = i;
-          bestSeq = seq;
+          bestTag = tag;
         }
       }
     }
     if (foundAny) {
       dispatch.alu.rsIndex = best;
-      dispatch.alu.robIndex = RS.integerRS[best].robIndex;
-      dispatch.alu.robSeq = bestSeq;
+      dispatch.alu.robTag = bestTag;
       dispatch.alu.rsType = RSType::Integer;
       dispatch.alu.valid = true;
-      if (squash.needSquash && bestSeq >= squash.SquashSeq)
+      if (squash.needSquash &&
+          !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.alu.valid = false;
     }
   }
   if (!AGU.isFull()) {
     bool foundAny = false;
     int best = -1;
-    uint64_t bestSeq = 0;
-    int bestRobIndex = -1;
+    uint8_t bestTag = 0;
     RSType bestType = RSType::Load;
     for (int i = 0; i < LOADRS_CAP; ++i) {
       auto rs = RS.loadRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        auto seq = ROB.getSeq(rs.robIndex);
-        if (!foundAny || seq < bestSeq) {
+        auto tag = rs.robTag;
+        if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
           best = i;
-          bestSeq = seq;
-          bestRobIndex = rs.robIndex;
+          bestTag = tag;
           bestType = RSType::Load;
         }
       }
@@ -247,48 +255,47 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
     for (int i = 0; i < STORERS_CAP; ++i) {
       auto rs = RS.storeAddressRS[i];
       if (!rs.free && rs.qj == -1) {
-        auto seq = ROB.getSeq(rs.robIndex);
-        if (!foundAny || seq < bestSeq) {
+        auto tag = rs.robTag;
+        if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
           best = i;
-          bestSeq = seq;
-          bestRobIndex = rs.robIndex;
+          bestTag = tag;
           bestType = RSType::StoreAddr;
         }
       }
     }
     if (foundAny) {
       dispatch.agu.rsIndex = best;
-      dispatch.agu.robIndex = bestRobIndex;
-      dispatch.agu.robSeq = bestSeq;
+      dispatch.agu.robTag = bestTag;
       dispatch.agu.rsType = bestType;
       dispatch.agu.valid = true;
-      if (squash.needSquash && bestSeq >= squash.SquashSeq)
+      if (squash.needSquash &&
+          !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.agu.valid = false;
     }
   }
   if (!BRU.isFull()) {
     bool foundAny = false;
     int best = -1;
-    uint64_t bestSeq = 0;
+    uint8_t bestTag = 0;
     for (int i = 0; i < BRANCHRS_CAP; ++i) {
       auto rs = RS.branchRS[i];
       if (!rs.free && rs.qj == -1 && rs.qk == -1) {
-        auto seq = ROB.getSeq(rs.robIndex);
-        if (!foundAny || seq < bestSeq) {
+        auto tag = rs.robTag;
+        if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
           best = i;
-          bestSeq = seq;
+          bestTag = tag;
         }
       }
     }
     if (foundAny) {
       dispatch.bru.rsIndex = best;
-      dispatch.bru.robIndex = RS.branchRS[best].robIndex;
-      dispatch.bru.robSeq = bestSeq;
+      dispatch.bru.robTag = bestTag;
       dispatch.bru.rsType = RSType::Branch;
       dispatch.bru.valid = true;
-      if (squash.needSquash && bestSeq >= squash.SquashSeq)
+      if (squash.needSquash &&
+          !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.bru.valid = false;
     }
   }

@@ -13,13 +13,13 @@ enum class ROBType {
 struct ROBEntry {
   ROBType type = ROBType::REGISTER;
   bool isCommitReady = false;
-  uint64_t seq;
+  uint8_t tag;
   int dest = 0; // if type is REGISTER, record its destination
   uint32_t predictedPC = 0;
   int32_t pc = 0;
   bool halt = false;
-  bool isCall = false;  // JAL rd==1（RAS 压栈类型）
-  bool isRet = false;   // JALR x0, 0(x1)（RAS 弹栈类型）
+  bool isCall = false; // JAL rd==1
+  bool isRet = false;  // JALR x0, 0(x1)
   uint8_t lsqTailSnapshot = 0;
   Checkpoint ckpt{};
   int newPhy = -1;
@@ -45,30 +45,33 @@ struct ROBInput {
 };
 class ROB {
   friend struct ReorderTester;
-  friend struct Reorder720Tester;
 
 private:
   ROBEntry ROBqueue[ROB_CAP];
   uint8_t head = 0;
-  uint8_t tail = 0;
-  uint64_t next_seq = 1;
+  uint8_t next_tag = 0;
   bool haltCommitted = false;
   int haltRd = -1;
 
 public:
+  using RobTag = ::RobTag;
+  static bool isOlder(RobTag tag_a, RobTag tag_b);
+  static bool isYounger(RobTag tag_a, RobTag tag_b);
+  static int idx(RobTag t);
+  int getIndexByTag(RobTag tag) const;
   bool isFull() const;
   bool isEmpty() const;
-  bool isHaltCommitted() const { return haltCommitted; }
-  int getHaltRd() const { return haltRd; }
+  bool isHaltCommitted() const;
+  int getHaltRd() const;
   bool isHeadCommitReady() const;
-  uint64_t headSeq() const;
-  uint64_t getNextSeq() const { return next_seq; }
+  uint8_t headTag() const;
+  uint8_t getNextTag() const;
+  void updateNextTag();
   int push(ROBEntry entry);
   ROBEntry peek() const;
   void pop();
-  int getTail() const;
   int getHead() const;
-  uint64_t getSeq(int index) const;
+  uint8_t getTag(int index) const;
   bool isCommitReadyAt(int index) const;
   ROBType getType(int index) const;
   int getDest(int index) const;

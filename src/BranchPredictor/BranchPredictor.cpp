@@ -33,57 +33,46 @@ FetchDecision FetchDecision::build(const BranchPredictor &bp, uint32_t pc,
 }
 
 void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
-  struct Cand {
-    bool valid = false;
-    uint64_t seq = 0;
-    int32_t pc = 0;
-    bool taken = false;
-    int32_t target = 0;
-    uint16_t ghr = 0;
-    bool cond = true;
-    bool isCall = false;
-    bool isRet = false;
-  } bru, cdb;
-
+  Cand bru, cdb;
   // collect candidate 1: BRU (B-type branch completed)
   if (!input.BRUModule.isEmpty()) {
-    int index = input.BRUModule.headRobIndex();
-    uint64_t brRobSeq = input.BRUModule.headRobSeq();
+    uint8_t brRobTag = input.BRUModule.headRobTag();
     int pcResult = input.BRUModule.headPCResult();
     int pcFrom = input.BRUModule.headPCFrom();
-    if (index >= 0) {
+    {
       ++CPUstate.BPModule.branchTotal;
-      bool correct = pcResult == input.ROBModule.getPredictedPC(index);
+      bool correct = pcResult ==
+                     input.ROBModule.getPredictedPC(
+                         input.ROBModule.getIndexByTag(brRobTag));
       if (correct)
         ++CPUstate.BPModule.branchCorrect;
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           brRobSeq < input.squashDetect.SquashSeq)) {
+           ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
         bru.valid = true;
-        bru.seq = brRobSeq;
         bru.pc = pcFrom;
         bru.taken = pcResult != pcFrom + 4;
         bru.target = pcResult;
-        bru.ghr = input.ROBModule.getRASCkpt(index).GHR_snapshot;
+        bru.ghr = input.ROBModule
+                      .getRASCkpt(input.ROBModule.getIndexByTag(brRobTag))
+                      .GHR_snapshot;
       }
     }
   }
   // collect candidate 2: CDB (JAL/JALR control transfer completed)
   auto cdbOut = input.cdbOut;
   if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
-      cdbOut.result.robSeq >= input.ROBModule.headSeq()) {
-    auto robIndex = cdbOut.result.robIndex;
-    auto robSeq = cdbOut.result.robSeq;
+      !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.headTag())) {
+    auto robIndex = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
     const auto pc = static_cast<uint32_t>(cdbOut.result.value);
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
-         robSeq < input.squashDetect.SquashSeq)) {
+         ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag))) {
       ++CPUstate.BPModule.branchTotal;
       bool correct = pc == input.ROBModule.getPredictedPC(robIndex);
       if (correct)
         ++CPUstate.BPModule.branchCorrect;
       cdb.valid = true;
-      cdb.seq = robSeq;
       cdb.pc = input.ROBModule.getPC(robIndex);
       cdb.taken = true;
       cdb.target = static_cast<int32_t>(pc);
@@ -191,7 +180,7 @@ void BranchPredictor::update(int32_t pc, bool taken, int32_t target,
     BTB[BTB_index].target = target;
     BTB[BTB_index].valid = true;
     BTB[BTB_index].unconditional = false;
-    BTB[BTB_index].isCall = false;  // 槽位复用：清 JAL/JALR 残留标志
+    BTB[BTB_index].isCall = false; 
     BTB[BTB_index].isRet = false;
   }
 }

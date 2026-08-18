@@ -8,7 +8,8 @@ CDBBypassResult IssueArbiter::CDBBypass(const IssueArbiterInput &input,
                                         int phy) {
   CDBBypassResult out{};
   if (input.cdbOut.valid && !input.cdbOut.result.isControl &&
-      input.ROBModule.getNewPhy(input.cdbOut.result.robIndex) == phy) {
+      input.ROBModule.getNewPhy(
+          input.ROBModule.getIndexByTag(input.cdbOut.result.robTag)) == phy) {
     out.valid = true;
     out.value = input.cdbOut.result.value;
   }
@@ -29,8 +30,8 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.valid = true;
   p.hasInteger = true;
   p.integerSlot = integerSlot;
-  p.robIndex = input.ROBModule.getTail();
-  p.robSeq = input.ROBModule.getNextSeq();
+  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
+  p.robTag = input.ROBModule.getNextTag();
   p.integerRS.free = false;
   p.integerRS.op = decodeOp(inst);
   auto regNum1 = inst.rs1;
@@ -100,7 +101,7 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
     p.robEntry.ckpt.flHeadSeqCkpt =
         input.PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
   }
-  p.integerRS.robIndex = p.robIndex;
+  p.integerRS.robTag = p.robTag;
   return p;
 }
 
@@ -118,8 +119,8 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.valid = true;
   p.hasInteger = true;
   p.integerSlot = integerSlot;
-  p.robIndex = input.ROBModule.getTail();
-  p.robSeq = input.ROBModule.getNextSeq();
+  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
+  p.robTag = input.ROBModule.getNextTag();
   p.integerRS.free = false;
   p.integerRS.op = decodeOp(inst);
   auto destination = inst.rd;
@@ -157,7 +158,7 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
     p.robEntry.ckpt.flHeadSeqCkpt =
         input.PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
   }
-  p.integerRS.robIndex = p.robIndex;
+  p.integerRS.robTag = p.robTag;
   return p;
 }
 
@@ -174,8 +175,8 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   p.valid = true;
   p.hasBranch = true;
   p.branchSlot = branchSlot;
-  p.robIndex = input.ROBModule.getTail();
-  p.robSeq = input.ROBModule.getNextSeq();
+  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
+  p.robTag = input.ROBModule.getNextTag();
   p.branchRS.free = false;
   p.branchRS.op = decodeOp(inst);
   p.branchRS.imm = inst.imm;
@@ -221,7 +222,7 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
          sizeof(p.robEntry.ckpt.RATsnapshot.RAT_snapshot));
   p.robEntry.ckpt.flHeadSeqCkpt = input.PRFModule.getHeadSeq();
-  p.branchRS.robIndex = p.robIndex;
+  p.branchRS.robTag = p.robTag;
   return p;
 }
 
@@ -242,8 +243,9 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.loadSlot = loadSlot;
   p.nBytes = n_bytes;
   p.isUnsigned = isUnsigned;
-  p.robIndex = input.ROBModule.getTail();
-  p.robSeq = input.ROBModule.getNextSeq();
+  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
+  p.robTag = input.ROBModule.getNextTag();
+  p.loadRS.lsqIndex = input.LSQModule.getTail();
   p.loadRS.free = false;
   p.loadRS.op = decodeOp(inst);
   auto regNum1 = inst.rs1;
@@ -277,7 +279,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination, p.phy,
                  p.robEntry.oldPhy);
-  p.loadRS.robIndex = p.robIndex;
+  p.loadRS.robTag = p.robTag;
   return p;
 }
 
@@ -298,8 +300,10 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
   p.storeAddrSlot = storeAddrSlot;
   p.storeValueSlot = storeValueSlot;
   p.nBytes = n_bytes;
-  p.robIndex = input.ROBModule.getTail();
-  p.robSeq = input.ROBModule.getNextSeq();
+  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
+  p.robTag = input.ROBModule.getNextTag();
+  p.storeAddrRS.lsqIndex = input.LSQModule.getTail();
+  p.storeValueRS.lsqIndex = p.storeAddrRS.lsqIndex;
   p.storeAddrRS.free = false;
   p.storeAddrRS.op = decodeOp(inst);
   auto regNum1 = inst.rs1;
@@ -339,8 +343,8 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
     }
   }
   p.robEntry = ROBEntry(ROBType::STORE);
-  p.storeAddrRS.robIndex = p.robIndex;
-  p.storeValueRS.robIndex = p.robIndex;
+  p.storeAddrRS.robTag = p.robTag;
+  p.storeValueRS.robTag = p.robTag;
   return p;
 }
 
@@ -450,8 +454,8 @@ IssuePacket IssueArbiter::build(const IssueArbiterInput &input) {
       if (inst.isHalt) {
         issuePacket.valid = true;
         issuePacket.isHalt = true;
-        issuePacket.robIndex = input.ROBModule.getTail();
-        issuePacket.robSeq = input.ROBModule.getNextSeq();
+        issuePacket.robIndex = ROB::idx(input.ROBModule.getNextTag());
+        issuePacket.robTag = input.ROBModule.getNextTag();
         issuePacket.robEntry = ROBEntry(ROBType::REGISTER);
         issuePacket.robEntry.dest = inst.rd;
         issuePacket.robEntry.halt = true;

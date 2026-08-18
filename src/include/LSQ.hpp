@@ -11,12 +11,12 @@ enum class ValueState {
 };
 struct LSQEntry {
   bool isLoad;
-  int robIndex;
-  uint64_t robSeq;
+  RobTag robTag;
+  uint8_t knownBiggestStoreTag; // 已知最老同地址 store 的 tag（valid 配合）
+  bool knownBiggestStoreValid;  // 是否有已知 forwarding store（硬件 valid bit）
   uint32_t address;
   int32_t value;
   int n_bytes;
-  uint64_t knownBiggestStoreSeq;
   bool isAddressReady;
   ValueState valueState;
   bool isUnsigned;
@@ -25,7 +25,7 @@ struct LSQEntry {
 struct LSQWrite {
   uint8_t index;
   int32_t value;
-  uint64_t knownSeq;
+  uint8_t knownTag;
   bool setValue;
 };
 struct LSQStoreToLoadForwardPlan {
@@ -62,21 +62,19 @@ public:
   LSQ() { std::memset(this, 0, sizeof(*this)); }
   bool isEmpty() const;
   bool isFull() const;
-  void pushLoad(int robIndex, uint64_t robSeq, int n_bytes, bool isUnsigned);
-  void pushStore(int robIndex, uint64_t robSeq, int n_bytes);
+  void pushLoad(RobTag robTag, int n_bytes, bool isUnsigned);
+  void pushStore(RobTag robTag, int n_bytes);
   void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
   bool isReadyToCommit(int index) const;
-  int getIndexBySeq(uint64_t robSeq) const;
   void writeAddress(uint32_t address, int index);
   void writeValue(int32_t value, int index);
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;
   auto isHeadLoad() const -> bool;
-  auto headRobSeq() const -> uint64_t;
-  auto getRobIndex(int index) const -> int;
-  auto getRobSeq(int index) const -> uint64_t;
+  auto headRobTag() const -> uint8_t;
+  auto getRobTag(int index) const -> uint8_t;
   auto getIsLoad(int index) const -> bool;
   auto getIsUnsigned(int index) const -> bool;
   auto getNBytes(int index) const -> int;

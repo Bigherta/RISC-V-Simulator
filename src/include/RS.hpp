@@ -10,16 +10,31 @@ struct ReservationStation {
   int32_t vk = 0;
   int qj = -1;
   int qk = -1;
-  int robIndex = ~0u >> 1;
+  RobTag robTag = 0xFF;
   ReservationStation() : free(true) {}
   ReservationStation(Operation type) : op(type), free(true) {}
+};
+
+struct AddressRS : public ReservationStation {
+  uint8_t lsqIndex = 0;
+  AddressRS() : ReservationStation() {}
+  AddressRS(Operation type) : ReservationStation(type) {}
+};
+
+struct LoadAddressRS : public AddressRS {
+  LoadAddressRS() : AddressRS() {}
+};
+
+struct StoreAddressRS : public AddressRS {
+  StoreAddressRS() : AddressRS() {}
 };
 
 struct StoreValueReservationStation {
   bool free;
   int32_t vrs2 = 0;
   int qrs2 = -1;
-  int robIndex = ~0u >> 1;
+  RobTag robTag = 0xFF;
+  uint8_t lsqIndex = 0;
   StoreValueReservationStation() : free(true) {}
 };
 
@@ -45,8 +60,8 @@ class RSUnit {
   friend struct ReorderTester;
 public:                           
   ReservationStation integerRS[INTEGERRS_CAP];
-  ReservationStation loadRS[LOADRS_CAP];
-  ReservationStation storeAddressRS[STORERS_CAP];
+  LoadAddressRS loadRS[LOADRS_CAP];
+  StoreAddressRS storeAddressRS[STORERS_CAP];
   StoreValueReservationStation storeValueRS[STORERS_CAP];
   BranchReservationStation branchRS[BRANCHRS_CAP];
   int tryAllocInteger() const;
@@ -54,7 +69,7 @@ public:
   int tryAllocStoreAddress() const;
   int tryAllocStoreValue() const;
   int tryAllocBranch() const;
-  void broadcast(const RSInput&, systemState&, int robIndex, int value);
+  void broadcast(const RSInput&, systemState&, RobTag robTag, int value);
   void tick(const RSInput&, systemState&);  
 };
 #endif // RS_HPP

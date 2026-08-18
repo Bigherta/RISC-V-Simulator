@@ -48,7 +48,6 @@ public:
   void clear();
   void snapshotFrom(const IMEM &other);
   uint8_t getHead() const { return head; }
-  uint8_t getCount() const { return count; }
   uint32_t getPC() const { return programCounter; }
   bool isHaltFetched() const { return haltFetched; }
   bool isRequestFull() const { return count == IMEM_CAP; }

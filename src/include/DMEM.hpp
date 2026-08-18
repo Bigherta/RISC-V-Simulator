@@ -18,8 +18,8 @@ class DMEM : public Memory {
   friend struct ReorderTester;
   bool busy = false;
   bool bufferValid = false;
-  MemRequest MemExecution;
-  MemRequest MemOutputBuffer;
+  MemRequest MemExecution = {};
+  MemRequest MemOutputBuffer = {};
 
 public:
   DMEM() = default;

@@ -1,7 +1,7 @@
 #include "../include/LSQ.hpp"
 #include "../include/CPU.hpp"
+#include "../include/ROB.hpp"
 #include "../include/util.hpp"
-#include <algorithm>
 #include <stdexcept>
 
 bool LSQ::isEmpty() const { return tail == head; }
@@ -10,12 +10,11 @@ bool LSQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
 
 void LSQ::pop() { head = (head + 1) & 0x3F; }
 
-void LSQ::pushLoad(int robIndex, uint64_t robSeq, int n_bytes,
-                   bool isUnsigned) {
+void LSQ::pushLoad(RobTag robTag, int n_bytes, bool isUnsigned) {
   LSQqueue[tail] = {};
   LSQqueue[tail].isLoad = true;
-  LSQqueue[tail].robIndex = robIndex;
-  LSQqueue[tail].robSeq = robSeq;
+  LSQqueue[tail].robTag = robTag;
+  LSQqueue[tail].knownBiggestStoreValid = false;
   LSQqueue[tail].n_bytes = n_bytes;
   LSQqueue[tail].isUnsigned = isUnsigned;
   LSQqueue[tail].isAddressReady = false;
@@ -23,11 +22,11 @@ void LSQ::pushLoad(int robIndex, uint64_t robSeq, int n_bytes,
   tail = (tail + 1) & 0x3F;
 }
 
-void LSQ::pushStore(int robIndex, uint64_t robSeq, int n_bytes) {
+void LSQ::pushStore(RobTag robTag, int n_bytes) {
   LSQqueue[tail] = {};
   LSQqueue[tail].isLoad = false;
-  LSQqueue[tail].robIndex = robIndex;
-  LSQqueue[tail].robSeq = robSeq;
+  LSQqueue[tail].robTag = robTag;
+  LSQqueue[tail].knownBiggestStoreValid = false;
   LSQqueue[tail].n_bytes = n_bytes;
   LSQqueue[tail].isAddressReady = false;
   LSQqueue[tail].valueState = ValueState::NOTREADY;
@@ -36,14 +35,6 @@ void LSQ::pushStore(int robIndex, uint64_t robSeq, int n_bytes) {
 
 uint8_t LSQ::getHead() const { return head; }
 uint8_t LSQ::getTail() const { return tail; }
-
-int LSQ::getIndexBySeq(uint64_t robSeq) const {
-  for (uint8_t cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
-    if (LSQqueue[cur].robSeq == robSeq)
-      return cur;
-  }
-  return -1;
-}
 
 void LSQ::flush(uint8_t tailSnapshot) { tail = tailSnapshot; }
 
@@ -82,14 +73,10 @@ auto LSQ::getValue(int index) const -> int32_t {
 
 auto LSQ::isHeadLoad() const -> bool { return LSQqueue[head].isLoad; }
 
-auto LSQ::headRobSeq() const -> uint64_t { return LSQqueue[head].robSeq; }
+auto LSQ::headRobTag() const -> uint8_t { return LSQqueue[head].robTag; }
 
-auto LSQ::getRobIndex(int index) const -> int {
-  return LSQqueue[index].robIndex;
-}
-
-auto LSQ::getRobSeq(int index) const -> uint64_t {
-  return LSQqueue[index].robSeq;
+auto LSQ::getRobTag(int index) const -> uint8_t {
+  return LSQqueue[index].robTag;
 }
 
 auto LSQ::getIsLoad(int index) const -> bool { return LSQqueue[index].isLoad; }
@@ -111,10 +98,14 @@ auto LSQ::planDataForward(int index,
   int knownBiggestSameAddrStore = index;
   for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
     if (LSQqueue[i].isLoad && LSQqueue[i].address == LSQqueue[index].address) {
+      auto candTag = LSQqueue[knownBiggestSameAddrStore].robTag;
       plan.writes[plan.count++] = {
           static_cast<uint8_t>(i), value,
-          std::max(LSQqueue[i].knownBiggestStoreSeq,
-                   LSQqueue[knownBiggestSameAddrStore].robSeq),
+          !LSQqueue[i].knownBiggestStoreValid
+              ? candTag
+              : (ROB::isOlder(LSQqueue[i].knownBiggestStoreTag, candTag)
+                     ? candTag
+                     : LSQqueue[i].knownBiggestStoreTag),
           unknownBiggestStore == index && knownBiggestSameAddrStore == index};
     } else if (!LSQqueue[i].isLoad) {
       if (!LSQqueue[i].isAddressReady) {
@@ -137,10 +128,14 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
     int knownBiggestSameAddrStore = index;
     for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
       if (LSQqueue[i].isLoad && LSQqueue[i].address == address) {
+        auto candTag = LSQqueue[knownBiggestSameAddrStore].robTag;
         plan.writes[plan.count++] = {
             static_cast<uint8_t>(i), LSQqueue[index].value,
-            std::max(LSQqueue[i].knownBiggestStoreSeq,
-                     LSQqueue[knownBiggestSameAddrStore].robSeq),
+            !LSQqueue[i].knownBiggestStoreValid
+                ? candTag
+                : (ROB::isOlder(LSQqueue[i].knownBiggestStoreTag, candTag)
+                       ? candTag
+                       : LSQqueue[i].knownBiggestStoreTag),
             unknownBiggestStore == index &&
                 knownBiggestSameAddrStore == index &&
                 LSQqueue[index].valueState == ValueState::READY};
@@ -158,7 +153,7 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
       if (!LSQqueue[i].isLoad) {
         if (LSQqueue[i].isAddressReady && LSQqueue[i].address == address) {
           plan.writes[plan.count++] = {static_cast<uint8_t>(index),
-                                       LSQqueue[i].value, LSQqueue[i].robSeq,
+                                       LSQqueue[i].value, LSQqueue[i].robTag,
                                        unknownBiggestStore == index &&
                                            LSQqueue[i].valueState ==
                                                ValueState::READY};
@@ -175,7 +170,8 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
 void LSQ::applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan) {
   for (uint8_t k = 0; k < plan.count; ++k) {
     LSQWrite w = plan.writes[k];
-    LSQqueue[w.index].knownBiggestStoreSeq = w.knownSeq;
+    LSQqueue[w.index].knownBiggestStoreTag = w.knownTag;
+    LSQqueue[w.index].knownBiggestStoreValid = true;
     if (w.setValue)
       writeValue(w.value, w.index);
   }
@@ -241,43 +237,36 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
   // 0. issue apply: push the pre-built load/store entries
   const auto &p = input.issuePacket;
   if (p.valid && p.isLoad)
-    CPUstate.LSQModule.pushLoad(p.robIndex, p.robSeq, p.nBytes, p.isUnsigned);
+    CPUstate.LSQModule.pushLoad(p.robTag, p.nBytes, p.isUnsigned);
   if (p.valid && p.isStore)
-    CPUstate.LSQModule.pushStore(p.robIndex, p.robSeq, p.nBytes);
+    CPUstate.LSQModule.pushStore(p.robTag, p.nBytes);
   for (int i = 0; i < STORERS_CAP; ++i) {
     if (!input.RSModule.storeValueRS[i].free &&
         input.RSModule.storeValueRS[i].qrs2 == -1) {
-      uint64_t Seq =
-          input.ROBModule.getSeq(input.RSModule.storeValueRS[i].robIndex);
+      uint8_t SeqTag = input.RSModule.storeValueRS[i].robTag;
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           Seq < input.squashDetect.SquashSeq)) {
-        auto index = getIndexBySeq(Seq);
-        if (index >= 0) {
-          auto plan =
-              planDataForward(index, input.RSModule.storeValueRS[i].vrs2);
-          if (debug::enabled(debug::TOPIC_LSQ))
-            debug::print("LSQ store value seq=%llu -> LSQ[%d] = %d\n",
-                         static_cast<unsigned long long>(Seq), index,
-                         input.RSModule.storeValueRS[i].vrs2);
-          CPUstate.LSQModule.writeValue(input.RSModule.storeValueRS[i].vrs2,
-                                        index);
-          CPUstate.LSQModule.applyStoreToLoadForward(plan);
-        }
-        CPUstate.RSModule.storeValueRS[i].free = true;
-        CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
+           ROB::isOlder(SeqTag, input.squashDetect.SquashTag))) {
+        auto index = input.RSModule.storeValueRS[i].lsqIndex;
+        auto plan = planDataForward(index, input.RSModule.storeValueRS[i].vrs2);
+        CPUstate.LSQModule.writeValue(input.RSModule.storeValueRS[i].vrs2,
+                                      index);
+        CPUstate.LSQModule.applyStoreToLoadForward(plan);
       }
+      CPUstate.RSModule.storeValueRS[i].free = true;
+      CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
     }
   }
   bool memBusy = input.DMEMModule.isBusy();
   bool storeDispatched = false;
   if (!memBusy && !isEmpty() && !isHeadLoad()) {
-    auto storeSeq = headRobSeq();
-    bool committed =
-        input.ROBModule.isEmpty() || storeSeq < input.ROBModule.headSeq();
+    auto storeTag = headRobTag();
+    bool committed = input.ROBModule.isEmpty() ||
+                     ROB::isOlder(storeTag, input.ROBModule.headTag());
     bool atHeadReady = !committed &&
-                       getRobIndex(getHead()) == input.ROBModule.getHead() &&
-                       input.ROBModule.isCommitReadyAt(getRobIndex(getHead()));
+                       headRobTag() == input.ROBModule.headTag() &&
+                       input.ROBModule.isCommitReadyAt(
+                           input.ROBModule.getIndexByTag(headRobTag()));
     if (committed || atHeadReady) {
       MemRequest newRequest{};
       newRequest.address = getAddress(getHead());
@@ -285,12 +274,11 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
       newRequest.isSigned = !getIsUnsigned(getHead());
       newRequest.n_bytes = getNBytes(getHead());
       newRequest.op = Operation::Store;
-      newRequest.robIndex = getRobIndex(getHead());
-      newRequest.robSeq = storeSeq;
+      newRequest.robTag = storeTag;
+      newRequest.lsqIndex = head;
       if (CPUstate.DMEMModule.MemPush(newRequest)) {
         if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("LSQ store dispatch seq=%llu @%u <- %d\n",
-                       static_cast<unsigned long long>(newRequest.robSeq),
+          debug::print("LSQ store dispatch tag=%u @%u <- %d\n", storeTag,
                        newRequest.address, newRequest.value);
         if (debug::enabled(debug::TOPIC_MEM))
           debug::print("MEM store @%u <- %d\n", newRequest.address,
@@ -307,46 +295,42 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
     newRequest.isSigned = !getIsUnsigned(loadIndex);
     newRequest.n_bytes = getNBytes(loadIndex);
     newRequest.op = Operation::Load;
-    newRequest.robIndex = getRobIndex(loadIndex);
-    newRequest.robSeq = getRobSeq(loadIndex);
+    newRequest.robTag = getRobTag(loadIndex);
+    newRequest.lsqIndex = loadIndex;
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
-         newRequest.robSeq < input.squashDetect.SquashSeq)) {
+         ROB::isOlder(newRequest.robTag, input.squashDetect.SquashTag))) {
       if (CPUstate.DMEMModule.MemPush(newRequest)) {
         if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("LSQ load dispatch seq=%llu @%u\n",
-                       static_cast<unsigned long long>(newRequest.robSeq),
+          debug::print("LSQ load dispatch tag=%u @%u\n", getRobTag(loadIndex),
                        newRequest.address);
         CPUstate.LSQModule.setValueState(loadIndex, ValueState::FETCHING);
       }
     }
   }
   uint8_t cur = getHead();
-  bool retireLoad =
-      !input.squashDetect.needSquash && cur != getTail() && isHeadLoad() &&
-      (input.ROBModule.isEmpty() || headRobSeq() < input.ROBModule.headSeq());
+  bool retireLoad = !input.squashDetect.needSquash && cur != getTail() &&
+                    isHeadLoad() &&
+                    (input.ROBModule.isEmpty() ||
+                     ROB::isOlder(headRobTag(), input.ROBModule.headTag()));
   (storeDispatched || retireLoad) ? CPUstate.LSQModule.pop() : void();
 
   // LSQ receive the value from AGU
   if (!input.AGUModule.isEmpty()) {
-    auto aguRobSeq = input.AGUModule.headRobSeq();
+    auto aguRobTag = input.AGUModule.headRobTag();
+    auto aguLsqIndex = input.AGUModule.headlsqIndex();
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
-         aguRobSeq < input.squashDetect.SquashSeq)) {
-      auto index = getIndexBySeq(aguRobSeq);
-      if (index >= 0) {
+         ROB::isOlder(aguRobTag, input.squashDetect.SquashTag))) {
         auto value = input.AGUModule.headValue();
-        auto plan = planAddressForward(index, value);
-        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), index);
+        auto plan = planAddressForward(aguLsqIndex, value);
+        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), aguLsqIndex);
         CPUstate.LSQModule.applyStoreToLoadForward(plan);
-      }
     }
   }
-  // 消费 CDB 总线：lsqGranted（guard 已并入 bus 预计算）
+  // consume the CDB
   if (input.cdbBus.lsqSetCDB) {
-    auto lsqIndex = getIndexBySeq(input.cdbBus.robSeq);
-    if (lsqIndex >= 0)
-      CPUstate.LSQModule.setCDBBroadcast(lsqIndex);
+      CPUstate.LSQModule.setCDBBroadcast(input.cdbBus.lsqIndex);
   }
   // clear the wrong LSQ (only on squash; SquashIndex is -1 otherwise)
   if (input.squashDetect.needSquash) {

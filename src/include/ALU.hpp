@@ -20,13 +20,12 @@ private:
 public:
   bool isFull() const;
   bool isEmpty() const;
-  void push(int32_t op1, int32_t op2, Operation op, int robIndex, uint64_t robSeq,
-            bool isControl);
-  void remove(uint64_t robSeq);
-  void flush(uint64_t seq);
+  void push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
+                bool isControl);
+  void remove(uint8_t robTag);
+  void flush(uint8_t tag);
   int32_t headValue() const;
-  int headRobIndex() const;
-  uint64_t headRobSeq() const;
+  uint8_t headRobTag() const;
   bool headIsControl() const;
   bool isValid(int index) const { return slotValid[index]; }
   void tick(const ALUInput&, systemState&);

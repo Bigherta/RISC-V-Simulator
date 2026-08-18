@@ -83,11 +83,11 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto robIndex = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
+      auto robIdx = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
       auto isControl = cdbOut.result.isControl;
       if (!isControl) {
         auto value = cdbOut.result.value;
-        int newPhy = input.ROBModule.getNewPhy(robIndex);
+        int newPhy = input.ROBModule.getNewPhy(robIdx);
         if (newPhy >= 0) {
           CPUstate.PRFModule.write(newPhy, value);
           if (debug::enabled(debug::TOPIC_PRF)) {

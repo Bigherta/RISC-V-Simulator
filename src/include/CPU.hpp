@@ -83,7 +83,7 @@ private:
   FQInput fqInput{IMEMModule, DecodeUnitModule};
 public:
   CPU(Memory mem);
-  void read();
+  void comb();
   void run();
 };
 

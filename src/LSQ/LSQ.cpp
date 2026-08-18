@@ -233,8 +233,50 @@ bool LSQ::isReadyToCommit(int index) const {
   return false;
 }
 
+MemDispatchDecision LSQ::selectMemRequest(const ROB &rob, const DMEM &dmem,
+                                          const SquashInfo &squash) const {
+  MemDispatchDecision memDecision{};
+  if (!dmem.isBusy() && !isEmpty() && !isHeadLoad()) {
+    auto storeTag = headRobTag();
+    bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.headTag());
+    bool atHeadReady = !committed && headRobTag() == rob.headTag() &&
+                       rob.isCommitReadyAt(rob.getIndexByTag(headRobTag()));
+    if (committed || atHeadReady) {
+      MemRequest newRequest{};
+      newRequest.address = getAddress(getHead());
+      newRequest.value = getValue(getHead());
+      newRequest.isSigned = !getIsUnsigned(getHead());
+      newRequest.n_bytes = getNBytes(getHead());
+      newRequest.op = Operation::Store;
+      newRequest.robTag = storeTag;
+      newRequest.lsqIndex = head;
+      memDecision.valid = true;
+      memDecision.request = newRequest;
+    }
+  }
+  if (memDecision.valid)
+    return memDecision;
+  auto loadIndex = LoadDetect();
+  if (loadIndex != 0xFFFFFFFF && !dmem.isBusy()) {
+    MemRequest newRequest{};
+    newRequest.address = getAddress(loadIndex);
+    newRequest.isSigned = !getIsUnsigned(loadIndex);
+    newRequest.n_bytes = getNBytes(loadIndex);
+    newRequest.op = Operation::Load;
+    newRequest.robTag = getRobTag(loadIndex);
+    newRequest.lsqIndex = loadIndex;
+    if (!squash.needSquash ||
+        (squash.needSquash &&
+         ROB::isOlder(newRequest.robTag, squash.SquashTag))) {
+      memDecision.valid = true;
+      memDecision.request = newRequest;
+    }
+  }
+  return memDecision;
+}
+
 void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
-  // 0. issue apply: push the pre-built load/store entries
+  // issue apply: push the pre-built load/store entries
   const auto &p = input.issuePacket;
   if (p.valid && p.isLoad)
     CPUstate.LSQModule.pushLoad(p.robTag, p.nBytes, p.isUnsigned);
@@ -253,59 +295,18 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
                                       index);
         CPUstate.LSQModule.applyStoreToLoadForward(plan);
       }
-      CPUstate.RSModule.storeValueRS[i].free = true;
-      CPUstate.RSModule.storeValueRS[i].qrs2 = -1;
     }
   }
-  bool memBusy = input.DMEMModule.isBusy();
+  // dispatch possible memRequest (store first, then load); decision was
+  // pre-computed in the comb phase (CPU::read) and fed via both Inputs
+  const auto &decision = input.decision;
   bool storeDispatched = false;
-  if (!memBusy && !isEmpty() && !isHeadLoad()) {
-    auto storeTag = headRobTag();
-    bool committed = input.ROBModule.isEmpty() ||
-                     ROB::isOlder(storeTag, input.ROBModule.headTag());
-    bool atHeadReady = !committed &&
-                       headRobTag() == input.ROBModule.headTag() &&
-                       input.ROBModule.isCommitReadyAt(
-                           input.ROBModule.getIndexByTag(headRobTag()));
-    if (committed || atHeadReady) {
-      MemRequest newRequest{};
-      newRequest.address = getAddress(getHead());
-      newRequest.value = getValue(getHead());
-      newRequest.isSigned = !getIsUnsigned(getHead());
-      newRequest.n_bytes = getNBytes(getHead());
-      newRequest.op = Operation::Store;
-      newRequest.robTag = storeTag;
-      newRequest.lsqIndex = head;
-      if (CPUstate.DMEMModule.MemPush(newRequest)) {
-        if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("LSQ store dispatch tag=%u @%u <- %d\n", storeTag,
-                       newRequest.address, newRequest.value);
-        if (debug::enabled(debug::TOPIC_MEM))
-          debug::print("MEM store @%u <- %d\n", newRequest.address,
-                       newRequest.value);
-        storeDispatched = true;
-        memBusy = true;
-      }
-    }
-  }
-  auto loadIndex = LoadDetect();
-  if (loadIndex != 0xFFFFFFFF && !memBusy) {
-    MemRequest newRequest{};
-    newRequest.address = getAddress(loadIndex);
-    newRequest.isSigned = !getIsUnsigned(loadIndex);
-    newRequest.n_bytes = getNBytes(loadIndex);
-    newRequest.op = Operation::Load;
-    newRequest.robTag = getRobTag(loadIndex);
-    newRequest.lsqIndex = loadIndex;
-    if (!input.squashDetect.needSquash ||
-        (input.squashDetect.needSquash &&
-         ROB::isOlder(newRequest.robTag, input.squashDetect.SquashTag))) {
-      if (CPUstate.DMEMModule.MemPush(newRequest)) {
-        if (debug::enabled(debug::TOPIC_LSQ))
-          debug::print("LSQ load dispatch tag=%u @%u\n", getRobTag(loadIndex),
-                       newRequest.address);
-        CPUstate.LSQModule.setValueState(loadIndex, ValueState::FETCHING);
-      }
+  if (decision.valid) {
+    if (decision.request.op == Operation::Store) {
+      storeDispatched = true;
+    } else {
+      CPUstate.LSQModule.setValueState(decision.request.lsqIndex,
+                                       ValueState::FETCHING);
     }
   }
   uint8_t cur = getHead();
@@ -315,6 +316,11 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
                      ROB::isOlder(headRobTag(), input.ROBModule.headTag()));
   (storeDispatched || retireLoad) ? CPUstate.LSQModule.pop() : void();
 
+  // LSQ receive the value from DMEM
+  if (input.loadResp.valid)
+    CPUstate.LSQModule.writeValue(input.loadResp.value,
+                                  input.loadResp.lsqIndex);
+
   // LSQ receive the value from AGU
   if (!input.AGUModule.isEmpty()) {
     auto aguRobTag = input.AGUModule.headRobTag();
@@ -322,15 +328,16 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
          ROB::isOlder(aguRobTag, input.squashDetect.SquashTag))) {
-        auto value = input.AGUModule.headValue();
-        auto plan = planAddressForward(aguLsqIndex, value);
-        CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value), aguLsqIndex);
-        CPUstate.LSQModule.applyStoreToLoadForward(plan);
+      auto value = input.AGUModule.headValue();
+      auto plan = planAddressForward(aguLsqIndex, value);
+      CPUstate.LSQModule.writeAddress(static_cast<uint32_t>(value),
+                                      aguLsqIndex);
+      CPUstate.LSQModule.applyStoreToLoadForward(plan);
     }
   }
   // consume the CDB
   if (input.cdbBus.lsqSetCDB) {
-      CPUstate.LSQModule.setCDBBroadcast(input.cdbBus.lsqIndex);
+    CPUstate.LSQModule.setCDBBroadcast(input.cdbBus.lsqIndex);
   }
   // clear the wrong LSQ (only on squash; SquashIndex is -1 otherwise)
   if (input.squashDetect.needSquash) {

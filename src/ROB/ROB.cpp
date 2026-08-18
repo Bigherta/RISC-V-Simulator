@@ -144,10 +144,10 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
     if (!input.squashDetect.needSquash ||
         ROB::isOlder(cdbOut.result.robTag,
                          input.squashDetect.SquashTag)) {
-      auto robIndex = getIndexByTag(cdbOut.result.robTag);
+      auto robIdx = getIndexByTag(cdbOut.result.robTag);
       if (!isEmpty() &&
           !ROB::isOlder(cdbOut.result.robTag, headTag())) {
-        CPUstate.ROBModule.setROBCommitReady(robIndex);
+        CPUstate.ROBModule.setROBCommitReady(robIdx);
       }
     }
   }

@@ -91,6 +91,11 @@ struct MemRequest {
   uint8_t lsqIndex;
 };
 
+struct MemDispatchDecision {
+  bool valid = false;
+  MemRequest request{};
+};
+
 struct SquashInfo {
   bool needSquash = false;
   int SquashIndex = -1;
@@ -196,5 +201,10 @@ struct FetchDecision {
   static FetchDecision build(const BranchPredictor &bp, uint32_t pc,
                              const SquashInfo &squash, bool haltFetched,
                              bool fqFull, bool imemReqFull);
+};
+struct LoadResponse {
+  bool valid = false;
+  uint8_t lsqIndex = 0;
+  int32_t value = 0;
 };
 #endif // COMMON_HPP

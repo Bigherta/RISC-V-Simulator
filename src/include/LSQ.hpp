@@ -13,7 +13,7 @@ struct LSQEntry {
   bool isLoad;
   RobTag robTag;
   uint8_t knownBiggestStoreTag; // 已知最老同地址 store 的 tag（valid 配合）
-  bool knownBiggestStoreValid;  // 是否有已知 forwarding store（硬件 valid bit）
+  bool knownBiggestStoreValid; // 是否有已知 forwarding store（硬件 valid bit）
   uint32_t address;
   int32_t value;
   int n_bytes;
@@ -41,11 +41,13 @@ struct IssuePacket;
 struct LSQInput {
   SquashInfo squashDetect;
   const AGU &AGUModule;
-  const RSUnit &RSModule;                       
-  const ROB &ROBModule;                     
+  const RSUnit &RSModule;
+  const ROB &ROBModule;
   const DMEM &DMEMModule;
-  CDBBus cdbBus;                   
   const IssuePacket &issuePacket;
+  CDBBus cdbBus;
+  LoadResponse loadResp;
+  MemDispatchDecision decision;
   LSQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem,
            const IssuePacket &pkt)
       : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem),
@@ -53,6 +55,7 @@ struct LSQInput {
 };
 class LSQ {
   friend struct ReorderTester;
+
 private:
   LSQEntry LSQqueue[LSQ_CAP];
   uint8_t head = 0;
@@ -81,15 +84,17 @@ public:
   void setValueState(int index, ValueState state);
   void setCDBBroadcast(int index);
   auto getIsCDBBroadcast(int index) const -> bool;
-  auto planDataForward(int index, int32_t value) const
-      -> LSQStoreToLoadForwardPlan;
-  auto planAddressForward(int index, uint32_t address) const
-      -> LSQStoreToLoadForwardPlan;
+  auto planDataForward(int index,
+                       int32_t value) const -> LSQStoreToLoadForwardPlan;
+  auto planAddressForward(int index,
+                          uint32_t address) const -> LSQStoreToLoadForwardPlan;
   void applyStoreToLoadForward(LSQStoreToLoadForwardPlan plan);
   int CDBDetect() const;
   int LoadDetect() const;
   void flush(uint8_t tailSnapshot);
-  void tick(const LSQInput&, systemState&);
+  MemDispatchDecision selectMemRequest(const ROB &rob, const DMEM &dmem,
+                                       const SquashInfo &squash) const;
+  void tick(const LSQInput &, systemState &);
 };
 
 #endif // LSQ_HPP

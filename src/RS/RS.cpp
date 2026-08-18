@@ -31,8 +31,8 @@ int RSUnit::tryAllocBranch() const {
   return -1;
 }
 void RSUnit::broadcast(const RSInput&input, systemState &CPUstate, RobTag robTag, int value) {
-  int robIndex = input.ROBModule.getIndexByTag(robTag);
-  int phy = input.ROBModule.getNewPhy(robIndex);
+  int robIdx = input.ROBModule.getIndexByTag(robTag);
+  int phy = input.ROBModule.getNewPhy(robIdx);
   if (phy < 0)
     return; // no dest register: nothing to broadcast
   for (int i = 0; i < INTEGERRS_CAP; i++) {
@@ -120,6 +120,11 @@ void RSUnit::tick(const RSInput &input, systemState &CPUstate) {
     CPUstate.RSModule.branchRS[idx].free = true;
     CPUstate.RSModule.branchRS[idx].qj = -1;
     CPUstate.RSModule.branchRS[idx].qk = -1;
+  }
+  for (int i = 0; i < STORERS_CAP; i++) {
+    if (!storeValueRS[i].free && storeValueRS[i].qrs2 == -1) {
+      CPUstate.RSModule.storeValueRS[i].free = true;
+    }
   }
 
   if (input.cdbBus.broadcastValid) {

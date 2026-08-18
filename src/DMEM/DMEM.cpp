@@ -1,6 +1,5 @@
 #include "../include/DMEM.hpp"
 #include "../include/CPU.hpp"
-#include <stdexcept>
 
 void DMEM::snapshotFrom(const DMEM &other) {
   busy = other.busy;
@@ -31,32 +30,35 @@ void DMEM::store_n_bytes(uint32_t address, int value, int n) {
   }
 }
 
-bool DMEM::MemPush(MemRequest request) {
-  if (busy)
-    throw std::runtime_error("DMEM is busy!");
-  MemExecution = request;
-  return busy = true;
-}
-
 void DMEM::MemPull() { bufferValid = false; }
 
-MemRequest DMEM::MemReturn() const { return MemOutputBuffer; }
+LoadResponse DMEM::LoadReturn(const SquashInfo &squash) const {
+  LoadResponse response;
+  if (isReady()) {
+    auto reply = MemOutputBuffer;
+    if (reply.op == Operation::Load &&
+        (!squash.needSquash || ROB::isOlder(reply.robTag, squash.SquashTag))) {
+      response.valid = true;
+      response.lsqIndex = reply.lsqIndex;
+      response.value = reply.value;
+    }
+  }
+  return response;
+}
 
 bool DMEM::isBusy() const { return busy; }
 
 bool DMEM::isReady() const { return bufferValid; }
 
-void DMEM::tick(const DMEMInput &input, systemState &next) {
+void DMEM::tick(const DMEMInput &input, systemState &CPUstate) {
+  // claim the pre-computed mem request (read = comb phase decided it)
+  if (!busy && input.decision.valid) {
+    CPUstate.DMEMModule.MemExecution = input.decision.request;
+    CPUstate.DMEMModule.busy = true;
+  }
   // output stage: consume the previous cycle's reply
   if (isReady()) {
-    auto reply = MemReturn();
-    if (reply.op == Operation::Load &&
-        (!input.squashDetect.needSquash ||
-         ROB::isOlder(reply.robTag, input.squashDetect.SquashTag))) {
-      auto index = reply.lsqIndex;
-      next.LSQModule.writeValue(reply.value, index);
-    }
-    next.DMEMModule.MemPull();
+    CPUstate.DMEMModule.MemPull();
   }
   // execution stage: this=snapshot reads own registers (hardware FSM),
   // writes the active module through the edge-write handle
@@ -66,16 +68,16 @@ void DMEM::tick(const DMEMInput &input, systemState &next) {
   exec.remainCycle--;
   if (!exec.remainCycle) {
     if (exec.op == Operation::Load) {
-      exec.value = next.DMEMModule.load_n_bytes(exec.address, exec.n_bytes,
-                                                exec.isSigned);
+      exec.value = CPUstate.DMEMModule.load_n_bytes(exec.address, exec.n_bytes,
+                                                    exec.isSigned);
     } else {
-      next.DMEMModule.store_n_bytes(exec.address, exec.value, exec.n_bytes);
+      CPUstate.DMEMModule.store_n_bytes(exec.address, exec.value, exec.n_bytes);
     }
-    next.DMEMModule.MemOutputBuffer = exec;
-    next.DMEMModule.bufferValid = true;
-    next.DMEMModule.busy = false;
+    CPUstate.DMEMModule.MemOutputBuffer = exec;
+    CPUstate.DMEMModule.bufferValid = true;
+    CPUstate.DMEMModule.busy = false;
   } else {
-    next.DMEMModule.MemExecution = exec;
-    next.DMEMModule.busy = true;
+    CPUstate.DMEMModule.MemExecution = exec;
+    CPUstate.DMEMModule.busy = true;
   }
 }

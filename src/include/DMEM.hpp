@@ -9,6 +9,7 @@ struct systemState;
 
 struct DMEMInput {
   SquashInfo squashDetect;
+  MemDispatchDecision decision;
   const LSQ& LSQModule;
   DMEMInput(const LSQ &lsq) : LSQModule(lsq) {}
 };
@@ -30,9 +31,8 @@ public:
   void snapshotFrom(const DMEM& other);
   int32_t load_n_bytes(uint32_t address, int n, bool isSigned) const;
   void store_n_bytes(uint32_t address, int value, int n);
-  bool MemPush(MemRequest request);
   void MemPull();
-  MemRequest MemReturn() const;
+  LoadResponse LoadReturn(const SquashInfo& squash) const;
   bool isBusy() const;
   bool isReady() const;
   void tick(const DMEMInput&, systemState&);

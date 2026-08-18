@@ -63,23 +63,23 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
   auto cdbOut = input.cdbOut;
   if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
       !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.headTag())) {
-    auto robIndex = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
+    auto robIdx = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
     const auto pc = static_cast<uint32_t>(cdbOut.result.value);
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
          ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag))) {
       ++CPUstate.BPModule.branchTotal;
-      bool correct = pc == input.ROBModule.getPredictedPC(robIndex);
+      bool correct = pc == input.ROBModule.getPredictedPC(robIdx);
       if (correct)
         ++CPUstate.BPModule.branchCorrect;
       cdb.valid = true;
-      cdb.pc = input.ROBModule.getPC(robIndex);
+      cdb.pc = input.ROBModule.getPC(robIdx);
       cdb.taken = true;
       cdb.target = static_cast<int32_t>(pc);
-      cdb.ghr = input.ROBModule.getRASCkpt(robIndex).GHR_snapshot;
+      cdb.ghr = input.ROBModule.getRASCkpt(robIdx).GHR_snapshot;
       cdb.cond = false;
-      cdb.isCall = input.ROBModule.getIsCall(robIndex);
-      cdb.isRet = input.ROBModule.getIsRet(robIndex);
+      cdb.isCall = input.ROBModule.getIsCall(robIdx);
+      cdb.isRet = input.ROBModule.getIsRet(robIdx);
     }
   }
 

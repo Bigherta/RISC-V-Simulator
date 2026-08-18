@@ -26,8 +26,9 @@ RISC-V-Tomasulo-CPU-Simulator/
 ├── README.md
 ├── src/                           # 模拟器源码（单体 Tomasulo 实现，逐周期快照双缓冲）
 │   ├── main/main.cpp              # 入口
-│   ├── CPU/CPU.cpp                # read() 快照 + 组合求值（FetchDecision / CDBArbiter /
-│   │                              #   CDBBus / IssueArbiter / DispatchArbiter）
+│   ├── CPU/CPU.cpp                # comb() 快照 + 组合求值（FetchDecision / CDBArbiter /
+│   │                              #   CDBBus / IssueArbiter / DispatchArbiter /
+│   │                              #   MemDispatchDecision / LoadResponse）
 │   │                              #   → 按流水顺序调用 14 个模块的 tick
 │   ├── include/                   # 全部头文件
 │   │   ├── common.hpp             # 容量常量与公共结构体（ROBEntry / CDBBus / FetchDecision / …）
@@ -71,9 +72,12 @@ RISC-V-Tomasulo-CPU-Simulator/
 每个周期按以下顺序推进（所有阶段只读周期开头的**快照**，只写自己的活体状态，
 故阶段调用顺序任意交换结果不变，见 §5.1）：
 
-1. **read()**：将全部模块 memcpy 进快照，并在快照边组合求值：`FetchDecision`
+1. **comb()**：将全部模块 memcpy 进快照，并在快照边组合求值：`FetchDecision`
    （取指决策）、`CDBArbiter` / `CDBBus`（写回广播）、`IssueArbiter::build`
-   （issue 分配）、`DispatchArbiter`（执行单元派发）。
+   （issue 分配）、`DispatchArbiter`（执行单元派发）、`selectMemRequest`
+   （LSQ → DMEM 请求准入决策，store 优先互斥）、`DMEM::LoadReturn`（DMEM → LSQ
+   load 回复总线）。所有跨模块总线信号在 comb 阶段打包装入对应 `Input`；各模块
+   tick 沿采样、写自己，**跨模块写为零**。
 2. **取指**：`IMEM.tick` 三段式（消费返回 / 发请求 / 管线递减）——带 3 周期延迟的
    指令内存，请求时拍 `BranchPredictorSnapshot` 存入在途请求（4 槽环形）；返回的
    指令经 `FQ.tick` 压入取指队列（FQ 满则背压停取）。
@@ -81,9 +85,15 @@ RISC-V-Tomasulo-CPU-Simulator/
    （读 DecodeUnit 快照判空槽）完成。
 4. **issue**：`IssueArbiter` 组合构建 `IssuePacket`（ROB/RS/LSQ 容量门控 + 操作数
    解析 + rename），六个模块的 tick 各自 apply（RAT 改名 / PRF pop+LINK / ROB push /
-   RS 槽位 / LSQ push / Decode pop）。
+   RS 槽位 / LSQ push / Decode pop）；LSQ→DMEM 请求准入由 comb 边 `selectMemRequest`
+   单次求值（store 优先互斥，`lsqInput.decision` = `dmemInput.decision`），`DMEM.tick`
+   段1 直接认领（`!busy && decision.valid` → 写自己 `MemExecution` + `busy`）——
+   `busy` 仅由 DMEM 置位，"至多一条在飞"从生产者信任升级为消费者强制。
 5. **执行与写回**：ALU/AGU/BRU 的操作数就绪即乱序执行；结果经 `CDBBus` 广播
-   （保留站 / PRF / ROB-ready / LSQ 完成端口 / JALR 解析）。
+   （保留站 / PRF / ROB-ready / LSQ 完成端口 / JALR 解析）。LSQ 完成的 load 回复由
+   comb 边 `DMEM::LoadReturn` 组合填入 `lsqInput.loadResp`，`LSQ.tick` 沿采样
+   写自己 `value`/READY（**DMEM 自己清 `bufferValid`**，comb 纯读）；返回路径
+   保持 2 拍 load-to-use。
 6. **提交**：ROB 头就绪即按序提交（PRF 释放旧物理寄存器）；`0x0ff00513`（li a0, 255）
    照常取指入队，其后返回的指令直接丢弃（不译码不执行），提交到 halt 时停机。
 7. **误预测恢复**：BRU/JALR 误预测经 `FlushArbiter` 仲裁（最老优先），各模块在自己
@@ -245,7 +255,7 @@ Tournament 混合预测器（方向预测与目标预测**按控制流类型拆�
 |--------|:---:|-----------:|--------------:|-------:|-----:|:----:|
 | array_test1 | 123 | 423 | 20/46 | 43.48% | 0.05s | OK |
 | array_test2 | 43 | 424 | 29/51 | 56.86% | 0.05s | OK |
-| basicopt1 | 88 | 924,216 | 166,733/202,275 | 82.43% | 5.75s | OK |
+| basicopt1 | 88 | 924,215 | 166,733/202,275 | 82.43% | 5.75s | OK |
 | bulgarian | 159 | 423,452 | 88,628/92,753 | 95.55% | 2.78s | OK |
 | expr | 58 | 1,012 | 88/125 | 70.40% | 0.06s | OK |
 | gcd | 178 | 1,124 | 110/180 | 61.11% | 0.05s | OK |
@@ -261,7 +271,7 @@ Tournament 混合预测器（方向预测与目标预测**按控制流类型拆�
 | statement_test | 50 | 2,152 | 173/288 | 60.07% | 0.05s | OK |
 | superloop | 134 | 736,895 | 441,891/453,293 | 97.48% | 3.66s | OK |
 | tak | 186 | 2,832,719 | 177,039/240,867 | 73.50% | 15.52s | OK |
-| **合计** | — | **196,339,846** | **36,820,013/44,392,178** | **82.94%** | — | **18/18** |
+| **合计**（同目录 `./test.sh` 输出，basicopt1 经 7-bit 改造后 -1 周期）| — | **196,339,845** | **36,820,013/44,392,178** | **82.94%** | — | **18/18** |
 
 > 说明：`naive` 只有 4 次条件分支且属于基本不可预测的模式，正确率 0% 属正常；
 > `array_test1` 等小测试点分支基数小，正确率波动大，参考大测试点（qsort / superloop

@@ -21,8 +21,6 @@ struct IMEMRequest {
   BranchPredictorSnapshot ckpt;
   bool valid = false;
 };
-// Instruction memory. 取指单元：除访存管线外，还拥有 fetch 控制状态
-// （programCounter 推进 / haltFetched 置位，见 docs §3.28）。
 class IMEM : public Memory {
 private:
   IMEMRequest IMEMreqs[IMEM_CAP];

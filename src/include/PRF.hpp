@@ -24,6 +24,7 @@ class PRF {
 private:
   PRFEntry PhysicalRegs[PRF_CAP];
   uint8_t freeList[PRF_CAP];
+  uint32_t PRFHeadCkpt[CKPT_CAP];
   uint32_t headSeq = 0;
   uint32_t tailSeq = 0;
 

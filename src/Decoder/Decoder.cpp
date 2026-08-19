@@ -102,9 +102,6 @@ void InstructQueue::push(Uop inst){
   instructQueueEntries[tail] = inst;
   tail = (tail + 1) & (IQ_CAP - 1);
 }
-const Uop &InstructQueue::headUop() const{
-  return instructQueueEntries[head];
-}
 void InstructQueue::pop(){
   head = (head + 1) & (IQ_CAP - 1);
 }
@@ -132,7 +129,7 @@ void DecodeUnit::tick(const DecodeInput &input, systemState &CPUstate){
   Uop uop = Decoder::decode(static_cast<int32_t>(raw));
   uop.pc = input.FQModule.headpc();
   uop.predictedPC = input.FQModule.headPredictedPC();
-  uop.BPSnapshot = input.FQModule.headBPSnapshot();
+  uop.ckptId = input.FQModule.headCkptId();
   uop.isHalt = (raw == 0x0ff00513);
   CPUstate.DecodeUnitModule.push(uop);
 }

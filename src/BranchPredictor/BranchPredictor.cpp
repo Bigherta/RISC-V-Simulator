@@ -27,7 +27,7 @@ FetchDecision FetchDecision::build(const BranchPredictor &bp, uint32_t pc,
         fdec.shiftValue = prediction.taken;
       }
     }
-    fdec.ckpt = bp.snapshotCheckPoint();
+    fdec.ckptId = bp.getNextCkptId();
   }
   return fdec;
 }
@@ -53,8 +53,8 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
         bru.pc = pcFrom;
         bru.taken = pcResult != pcFrom + 4;
         bru.target = pcResult;
-        bru.ghr = input.ROBModule
-                      .getRASCkpt(input.ROBModule.getIndexByTag(brRobTag))
+        bru.ghr = this->bpCkpt[input.ROBModule.getCkptId(
+                                 input.ROBModule.getIndexByTag(brRobTag))]
                       .GHR_snapshot;
       }
     }
@@ -62,7 +62,7 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
   // collect candidate 2: CDB (JAL/JALR control transfer completed)
   auto cdbOut = input.cdbOut;
   if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
-      !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.headTag())) {
+      !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.getHead())) {
     auto robIdx = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
     const auto pc = static_cast<uint32_t>(cdbOut.result.value);
     if (!input.squashDetect.needSquash ||
@@ -76,10 +76,10 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
       cdb.pc = input.ROBModule.getPC(robIdx);
       cdb.taken = true;
       cdb.target = static_cast<int32_t>(pc);
-      cdb.ghr = input.ROBModule.getRASCkpt(robIdx).GHR_snapshot;
+      cdb.ghr = this->bpCkpt[input.ROBModule.getCkptId(robIdx)].GHR_snapshot;
       cdb.cond = false;
-      cdb.isCall = input.ROBModule.getIsCall(robIdx);
-      cdb.isRet = input.ROBModule.getIsRet(robIdx);
+      cdb.isCall = input.ROBModule.isCall(robIdx);
+      cdb.isRet = input.ROBModule.isRet(robIdx);
     }
   }
 
@@ -99,22 +99,31 @@ void BranchPredictor::tick(const BPUpdateInput &input, systemState &CPUstate) {
     apply(cdb);
   // fetch decision consumption: GHR/RAS are advanced at the prediction beat
   // (same cycle as the request was issued), so the LIFO pairing stays exact
-  // (the decision is a read()-side value -- order-independent).
+  // (the decision is a read()-side value -- order-independent). The local
+  // checkpoint pool records the pre-prediction state of each fetched
+  // instruction (ckpt_id allocated at the comb() edge via nextCkptId).
   const auto &fd = input.fetchDecision;
   if (fd.valid) {
+    CPUstate.BPModule.bpCkpt[fd.ckptId] = this->snapshotCheckPoint();
     if (fd.isCall && !RAS_full())
       CPUstate.BPModule.RAS_push(fd.pc + 4);
     if (fd.isRet && !RAS_empty())
       CPUstate.BPModule.pop();
     if (fd.shift)
       CPUstate.BPModule.shiftGHR(fd.shiftValue);
+    CPUstate.BPModule.nextCkptId = (fd.ckptId + 1) & (CKPT_CAP - 1);
   }
   // flush: restore GHR/RAS from the squashed branch's checkpoint
-  // (tables keep the guarded updates above; only GHR/RAS are rewound).
+  // (tables keep the guarded updates above; only GHR/RAS are rewound). The
+  // pool slot of the squash point is kept; later fetches reuse ids from
+  // CkptId+1.
   if (input.squashDetect.needSquash &&
-      input.squashDetect.SquashIndex >= 0)
+      input.squashDetect.SquashIndex >= 0) {
     CPUstate.BPModule.recoverCheckPoint(
-        input.ROBModule.getRASCkpt(input.squashDetect.SquashIndex));
+        this->bpCkpt[input.squashDetect.CkptId]);
+    CPUstate.BPModule.nextCkptId =
+        (input.squashDetect.CkptId + 1) & (CKPT_CAP - 1);
+  }
 }
 PredictInfo BranchPredictor::predict(int32_t pc) const {
   auto local_index = (pc >> 2) & (LHT_CAP - 1);

@@ -43,6 +43,8 @@ private:
   uint32_t RAS[RAS_CAP] = {};
   int RAS_top = 0;
   uint16_t GHR = 0;
+  BranchPredictorSnapshot bpCkpt[CKPT_CAP] = {};
+  uint8_t nextCkptId = 0;
   uint64_t branchTotal = 0;
   uint64_t branchCorrect = 0;
 
@@ -64,6 +66,7 @@ public:
   auto RAS_full() const -> bool;
   BranchPredictorSnapshot snapshotCheckPoint() const;
   void recoverCheckPoint(const BranchPredictorSnapshot &);
+  uint8_t getNextCkptId() const { return nextCkptId; }
   void tick(const BPUpdateInput &, systemState &);
 };
 #endif // BRANCHPREDICTOR_HPP

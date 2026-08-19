@@ -21,17 +21,9 @@ struct ROBEntry {
   bool isCall = false; // JAL rd==1
   bool isRet = false;  // JALR x0, 0(x1)
   uint8_t lsqTailSnapshot = 0;
-  Checkpoint ckpt{};
+  uint8_t ckptId = 0;
   int newPhy = -1;
   int oldPhy = -1;
-  ROBEntry() {
-    std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF,
-                sizeof(ckpt.RATsnapshot.RAT_snapshot));
-  }
-  ROBEntry(ROBType type_) : type(type_) {
-    std::memset(ckpt.RATsnapshot.RAT_snapshot, 0xFF,
-                sizeof(ckpt.RATsnapshot.RAT_snapshot));
-  }
 };
 struct IssuePacket;
 struct ROBInput {
@@ -64,11 +56,12 @@ public:
   bool isHaltCommitted() const;
   int getHaltRd() const;
   bool isHeadCommitReady() const;
-  uint8_t headTag() const;
+  bool isHeadHalt() const;
+  ROBType headType() const;
+  int headDest() const;
   uint8_t getNextTag() const;
   void updateNextTag();
   int push(ROBEntry entry);
-  ROBEntry peek() const;
   void pop();
   int getHead() const;
   uint8_t getTag(int index) const;
@@ -76,16 +69,14 @@ public:
   ROBType getType(int index) const;
   int getDest(int index) const;
   int32_t getPC(int index) const;
-  bool getHalt(int index) const;
-  const BranchPredictorSnapshot &getRASCkpt(int index) const;
-  const int *getRATPrfCkpt(int index) const;
+  bool isHalt(int index) const;
+  uint8_t getCkptId(int index) const;
   int getPredictedPC(int index) const;
   uint8_t getLsqTailSnapshot(int index) const;
-  uint32_t getFlHeadSeqCkpt(int index) const;
   int getNewPhy(int index) const;
   int getOldPhy(int index) const;
-  bool getIsCall(int index) const;
-  bool getIsRet(int index) const;
+  bool isCall(int index) const;
+  bool isRet(int index) const;
   void setROBCommitReady(int index);
   void flush(int squashIndex);
   void tick(const ROBInput &, systemState &);

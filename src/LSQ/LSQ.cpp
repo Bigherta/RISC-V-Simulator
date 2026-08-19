@@ -3,7 +3,6 @@
 #include "../include/ROB.hpp"
 #include <cstdint>
 #include <stdexcept>
-#include <sys/types.h>
 
 bool LSQ::isEmpty() const { return tail == head; }
 
@@ -278,8 +277,8 @@ MemDispatchDecision LSQ::selectMemRequest(const ROB &rob, const DMEM &dmem,
   MemDispatchDecision memDecision{};
   if (!dmem.isBusy() && !isEmpty() && !isHeadLoad()) {
     auto storeTag = headRobTag();
-    bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.headTag());
-    bool atHeadReady = !committed && headRobTag() == rob.headTag() &&
+    bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.getHead());
+    bool atHeadReady = !committed && headRobTag() == rob.getHead() &&
                        rob.isCommitReadyAt(rob.getIndexByTag(headRobTag()));
     if (committed || atHeadReady) {
       MemRequest newRequest{};
@@ -353,7 +352,7 @@ void LSQ::tick(const LSQInput &input, systemState &CPUstate) {
   bool retireLoad = !input.squashDetect.needSquash && cur != getTail() &&
                     isHeadLoad() &&
                     (input.ROBModule.isEmpty() ||
-                     ROB::isOlder(headRobTag(), input.ROBModule.headTag()));
+                     ROB::isOlder(headRobTag(), input.ROBModule.getHead()));
   (storeDispatched || retireLoad) ? CPUstate.LSQModule.pop() : void();
 
   // LSQ receive the value from DMEM

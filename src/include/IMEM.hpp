@@ -18,7 +18,7 @@ struct IMEMRequest {
   int remain_cycle = 0;
   int32_t PC;
   int32_t predictPC;
-  BranchPredictorSnapshot ckpt;
+  uint8_t ckptId;
   bool valid = false;
 };
 class IMEM : public Memory {
@@ -56,9 +56,8 @@ public:
   uint32_t returnRaw() const { return IMEMreqs[head].raw_inst; }
   int32_t returnPC() const { return IMEMreqs[head].PC; }
   int32_t returnPredictPC() const { return IMEMreqs[head].predictPC; }
-  BranchPredictorSnapshot returnCkpt() const { return IMEMreqs[head].ckpt; }
+  uint8_t returnCkptId() const { return IMEMreqs[head].ckptId; }
   void pop();
-  void pushRequest(uint32_t pc, int32_t predictPC,
-                   const BranchPredictorSnapshot &);
+  void pushRequest(uint32_t pc, int32_t predictPC, uint8_t ckptId);
   void tick(const IMEMInput &, systemState &);
 };

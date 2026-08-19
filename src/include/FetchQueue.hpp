@@ -6,7 +6,7 @@ struct FetchQueueEntry {
   uint32_t raw;
   int pc;
   int32_t predictedPC;
-  BranchPredictorSnapshot BPsnapshot;
+  uint8_t ckptId;
 };
 struct IMEM;
 struct DecodeUnit;
@@ -32,12 +32,11 @@ public:
   bool isFull() const;
   bool isEmpty() const;
 
-  void push(uint32_t raw, int pc, int32_t predictedPC,
-            const BranchPredictorSnapshot &ckpt);
+  void push(uint32_t raw, int pc, int32_t predictedPC, uint8_t ckptId);
   uint32_t headRaw() const;
   int headpc() const;
   int32_t headPredictedPC() const;
-  BranchPredictorSnapshot headBPSnapshot() const;
+  uint8_t headCkptId() const;
   void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;

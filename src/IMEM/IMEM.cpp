@@ -18,12 +18,11 @@ void IMEM::pop() {
   head = (head + 1) & (IMEM_CAP - 1);
   count--;
 }
-void IMEM::pushRequest(uint32_t pc, int32_t predictPC,
-                       const BranchPredictorSnapshot &bpckpt) {
+void IMEM::pushRequest(uint32_t pc, int32_t predictPC, uint8_t ckptId) {
   assert(count != IMEM_CAP);
   IMEMRequest request{};
   request.remain_cycle = 3;
-  request.ckpt = bpckpt;
+  request.ckptId = ckptId;
   request.PC = pc;
   request.predictPC = predictPC;
   request.valid = true;
@@ -48,7 +47,7 @@ void IMEM::tick(const IMEMInput &input, systemState &CPUstate) {
   }
   if (input.fetchDecision.valid) {
     CPUstate.IMEMModule.pushRequest(input.fetchDecision.pc,
-        input.fetchDecision.predictedPC, input.fetchDecision.ckpt);
+        input.fetchDecision.predictedPC, input.fetchDecision.ckptId);
     CPUstate.IMEMModule.programCounter = input.fetchDecision.predictedPC;
   }
   for (int i = 0; i < IMEM_CAP; ++i) {

@@ -26,14 +26,19 @@ void RAT::restoreRAT_PRF(const RATSnapshot &snapshot) {
 
 void RAT::tick(const RATInput &input, systemState &CPUstate) {
   if (input.squashDetect.needSquash && input.squashDetect.SquashIndex >= 0) {
-    RATSnapshot snapP;
-    memcpy(snapP.RAT_snapshot,
-           input.ROBModule.getRATPrfCkpt(input.squashDetect.SquashIndex),
-           sizeof(snapP.RAT_snapshot));
-    CPUstate.RATModule.restoreRAT_PRF(snapP);
+    CPUstate.RATModule.restoreRAT_PRF(
+        this->ratCkpt[input.squashDetect.CkptId]);
   }
-  if (input.issuePacket.valid && input.issuePacket.allocDest) {
-    CPUstate.RATModule.setRAT_PRF(input.issuePacket.robEntry.dest,
-                                  input.issuePacket.phy);
+  if (input.issuePacket.valid) {
+    const auto &ckptId = input.issuePacket.robEntry.ckptId;
+    memcpy(CPUstate.RATModule.ratCkpt[ckptId].RAT_snapshot, this->RAT_PRF,
+           sizeof(RAT_PRF));
+    if (input.issuePacket.allocDest) {
+      CPUstate.RATModule.ratCkpt[ckptId]
+          .RAT_snapshot[input.issuePacket.robEntry.dest] =
+          input.issuePacket.phy;
+      CPUstate.RATModule.setRAT_PRF(input.issuePacket.robEntry.dest,
+                                    input.issuePacket.phy);
+    }
   }
 }

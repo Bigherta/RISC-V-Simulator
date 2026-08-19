@@ -8,12 +8,12 @@ bool FetchQueue::isFull() const { return ((tail + 1) & (FQ_CAP - 1)) == head; }
 bool FetchQueue::isEmpty() const { return head == tail; }
 
 void FetchQueue::push(uint32_t raw, int pc, int32_t predictedPC,
-               const BranchPredictorSnapshot &ckpt) {
+               uint8_t ckptId) {
   FetchQueueEntry entry{};
   entry.raw = raw;
   entry.pc = pc;
   entry.predictedPC = predictedPC;
-  entry.BPsnapshot = ckpt;
+  entry.ckptId = ckptId;
   FetchQueueEntries[tail] = entry;
   tail = (tail + 1) & (FQ_CAP - 1);
 }
@@ -23,10 +23,10 @@ int32_t FetchQueue::headPredictedPC() const {
     throw std::runtime_error("headPredictedPC on empty FetchQueue!");
   return FetchQueueEntries[head].predictedPC;
 }
-BranchPredictorSnapshot FetchQueue::headBPSnapshot() const {
+uint8_t FetchQueue::headCkptId() const {
   if (isEmpty())
-    throw std::runtime_error("headRASCkpt on empty FetchQueue!");
-  return FetchQueueEntries[head].BPsnapshot;
+    throw std::runtime_error("headCkptId on empty FetchQueue!");
+  return FetchQueueEntries[head].ckptId;
 }
 
 uint32_t FetchQueue::headRaw() const {
@@ -66,7 +66,7 @@ void FetchQueue::tick(const FQInput&input, systemState & CPUstate){
       uint32_t raw = input.IMEMModule.returnRaw();
       int32_t pc = input.IMEMModule.returnPC();
       int32_t predPC = input.IMEMModule.returnPredictPC();
-      CPUstate.FQModule.push(raw, pc, predPC, input.IMEMModule.returnCkpt());
+      CPUstate.FQModule.push(raw, pc, predPC, input.IMEMModule.returnCkptId());
     }
   }
   if (!isEmpty() && !input.DecodeUnitModule.isFull())

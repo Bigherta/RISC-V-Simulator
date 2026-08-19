@@ -65,9 +65,9 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
           (input.squashDetect.needSquash &&
            ROB::isOlder(lsqTag, input.squashDetect.SquashTag))) {
         if (!input.ROBModule.isEmpty() &&
-            !ROB::isOlder(lsqTag, input.ROBModule.headTag())) {
-          int newPhy = input.ROBModule.getNewPhy(
-              input.ROBModule.getIndexByTag(lsqTag));
+            !ROB::isOlder(lsqTag, input.ROBModule.getHead())) {
+          int newPhy =
+              input.ROBModule.getNewPhy(input.ROBModule.getIndexByTag(lsqTag));
           if (newPhy >= 0) {
             CPUstate.PRFModule.write(newPhy, input.LSQModule.getValue(i));
             if (debug::enabled(debug::TOPIC_PRF))
@@ -99,21 +99,25 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
       }
     }
   }
-  if (input.issuePacket.valid && input.issuePacket.allocDest) {
-    auto headphy = CPUstate.PRFModule.pop();
-    assert(headphy == input.issuePacket.phy);
-    if (input.issuePacket.isControl) {
-      CPUstate.PRFModule.write(input.issuePacket.phy,
-                               input.issuePacket.pc + 4);
-      if (debug::enabled(debug::TOPIC_PRF))
-        debug::print("PRF link P%d = %d (pc+4)\n", input.issuePacket.phy,
-                     input.issuePacket.pc + 4);
+  if (input.issuePacket.valid) {
+    CPUstate.PRFModule.PRFHeadCkpt[input.issuePacket.robEntry.ckptId] =
+        headSeq + (input.issuePacket.allocDest ? 1 : 0);
+    if (input.issuePacket.allocDest) {
+      auto headphy = CPUstate.PRFModule.pop();
+      assert(headphy == input.issuePacket.phy);
+      if (input.issuePacket.isControl) {
+        CPUstate.PRFModule.write(input.issuePacket.phy,
+                                 input.issuePacket.pc + 4);
+        if (debug::enabled(debug::TOPIC_PRF))
+          debug::print("PRF link P%d = %d (pc+4)\n", input.issuePacket.phy,
+                       input.issuePacket.pc + 4);
+      }
     }
   }
   if (input.squashDetect.needSquash) {
     auto index = input.squashDetect.SquashIndex;
     if (index >= 0) {
-      auto ckptHead = input.ROBModule.getFlHeadSeqCkpt(index);
+      auto ckptHead = PRFHeadCkpt[input.squashDetect.CkptId];
       CPUstate.PRFModule.restoreHead(ckptHead);
     }
     return;
@@ -121,10 +125,9 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   if (input.ROBModule.isEmpty() || !input.ROBModule.isHeadCommitReady())
     return;
   int headIdx = ROB::idx(input.ROBModule.getHead());
-  auto rob_entry = input.ROBModule.peek();
-  if (rob_entry.halt) {
-  } else if (rob_entry.type == ROBType::REGISTER ||
-             rob_entry.type == ROBType::LINK) {
+  if (!input.ROBModule.isHeadHalt() &&
+      (input.ROBModule.headType() == ROBType::REGISTER ||
+       input.ROBModule.headType() == ROBType::LINK)) {
     int newPhy = input.ROBModule.getNewPhy(headIdx);
     int oldPhy = input.ROBModule.getOldPhy(headIdx);
     if (oldPhy >= 0)

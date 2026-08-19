@@ -26,6 +26,7 @@ constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 128;
 constexpr int PRF_CAP = 128;
 constexpr int IMEM_CAP = 4;
+constexpr int CKPT_CAP = 128;
 enum class Operation {
   ADD,
   SUB,
@@ -101,6 +102,7 @@ struct SquashInfo {
   int SquashIndex = -1;
   uint8_t SquashTag = 0;
   uint32_t SquashPC = 0;
+  uint8_t CkptId = 0;
 };
 
 struct CDBOutput {
@@ -144,12 +146,6 @@ struct RATSnapshot {
   int RAT_snapshot[REGISTER_CAP];
 };
 
-struct Checkpoint {
-  RATSnapshot RATsnapshot;
-  BranchPredictorSnapshot BPsnapshot{};
-  uint32_t flHeadSeqCkpt = 0;
-};
-
 struct Uop {
   RISC_V type = RISC_V::RV_INVALID;
   int opcode = 0;
@@ -163,7 +159,22 @@ struct Uop {
   bool isHalt = false;
   bool allocDest = false;
   int32_t predictedPC = 0;
-  BranchPredictorSnapshot BPSnapshot{};
+  uint8_t ckptId = 0;
+};
+struct UopView {
+  RISC_V type = RISC_V::RV_INVALID;
+  int opcode = 0;
+  int funct3 = 0;
+  int funct7 = 0;
+  int rd = 0;
+  int rs1 = 0;
+  int rs2 = 0;
+  int32_t imm = 0;
+  uint32_t pc = 0;
+  bool isHalt = false;
+  bool allocDest = false;
+  int32_t predictedPC = 0;
+  uint8_t ckptId = 0;
 };
 enum class RSType { Integer, Branch, Load, StoreAddr };
 struct DispatchInfo {
@@ -195,7 +206,7 @@ struct FetchDecision {
   bool isRet = false;
   bool shift = false;
   bool shiftValue = false;
-  BranchPredictorSnapshot ckpt;
+  uint8_t ckptId = 0;
   // read() 边组合求值：取指条件（squash/halt/FQ 满/窗口满）+ predict（快照
   // BP）+ 预测拍快照（定义见 BranchPredictor.cpp）。
   static FetchDecision build(const BranchPredictor &bp, uint32_t pc,

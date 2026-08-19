@@ -77,6 +77,8 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
         BranchSquash.SquashPC = actualPC;
         BranchSquash.SquashIndex = input.ROBModule.getIndexByTag(brRobTag);
         BranchSquash.SquashTag = brRobTag;
+        BranchSquash.CkptId =
+            input.ROBModule.getCkptId(BranchSquash.SquashIndex);
       }
     }
     if (BranchSquash.needSquash)
@@ -90,7 +92,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
       auto isControl = cdbOut.result.isControl;
 
       if (!input.ROBModule.isEmpty() &&
-          !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.headTag()) &&
+          !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.getHead()) &&
           isControl) {
         SquashInfo JumpSquash;
         const auto pc = static_cast<uint32_t>(cdbOut.result.value);
@@ -104,6 +106,8 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
           JumpSquash.SquashIndex =
               input.ROBModule.getIndexByTag(cdbOut.result.robTag);
           JumpSquash.SquashTag = cdbOut.result.robTag;
+          JumpSquash.CkptId =
+              input.ROBModule.getCkptId(JumpSquash.SquashIndex);
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
@@ -141,12 +145,13 @@ CDBBus CDBBus::build(const CDBOutput &cdbOut, const ROB &ROBModule,
         !squashDetect.needSquash ||
         ROB::isOlder(r.robTag, squashDetect.SquashTag);
     bool robOk = !ROBModule.isEmpty() &&
-                 !ROB::isOlder(r.robTag, ROBModule.headTag());
+                 !ROB::isOlder(r.robTag, ROBModule.getHead());
     cdbBus.broadcastValid = guard && (!r.isControl || robOk);
+    int newPhy =
+        robOk ? ROBModule.getNewPhy(ROBModule.getIndexByTag(r.robTag)) : -1;
     cdbBus.broadcastValue =
         r.isControl
-            ? PRFModule.getValue(ROBModule.getNewPhy(
-                  ROBModule.getIndexByTag(r.robTag)))
+            ? (newPhy >= 0 ? PRFModule.getValue(newPhy) : 0)
             : r.value;
     cdbBus.lsqSetCDB = guard && cdbOut.lsqGranted;
     cdbBus.robTag = r.robTag;

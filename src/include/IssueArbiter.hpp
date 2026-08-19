@@ -47,17 +47,19 @@ struct IssueArbiterInput {
 };
 struct IssueArbiter {
 private:
-  static IssuePacket issue_IntegerRS(const IssueArbiterInput &, const Uop &inst,
+  static IssuePacket issue_IntegerRS(const IssueArbiterInput &,
+                                     const UopView &inst,
                                      bool has_rs2, bool imm_as_vk,
                                      bool isControl);
-  static IssuePacket issue_UandJ(const IssueArbiterInput &, const Uop &inst,
+  static IssuePacket issue_UandJ(const IssueArbiterInput &,
+                                 const UopView &inst,
                                  bool has_PC, bool isControl = false);
-  static IssuePacket issue_Load(const IssueArbiterInput &, const Uop &inst,
+  static IssuePacket issue_Load(const IssueArbiterInput &, const UopView &inst,
                                 int n_bytes, bool isUnsigned);
-  static IssuePacket issue_Store(const IssueArbiterInput &, const Uop &inst,
+  static IssuePacket issue_Store(const IssueArbiterInput &, const UopView &inst,
                                  int n_bytes);
-  static IssuePacket issue_B(const IssueArbiterInput &, const Uop &inst);
-  static Operation decodeOp(const Uop &inst);
+  static IssuePacket issue_B(const IssueArbiterInput &, const UopView &inst);
+  static Operation decodeOp(const UopView &inst);
   static CDBBypassResult CDBBypass(const IssueArbiterInput &, int phy);
 
 public:

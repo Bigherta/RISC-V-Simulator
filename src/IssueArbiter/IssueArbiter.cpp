@@ -17,7 +17,7 @@ CDBBypassResult IssueArbiter::CDBBypass(const IssueArbiterInput &input,
 }
 
 IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
-                                          const Uop &inst, bool has_rs2,
+                                          const UopView &inst, bool has_rs2,
                                           bool imm_as_vk, bool isControl) {
   IssuePacket p{};
   if (input.ROBModule.isFull()) {
@@ -80,6 +80,7 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
   p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
+  p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
   p.robEntry.newPhy = p.phy;
@@ -92,21 +93,13 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
     p.robEntry.type = ROBType::LINK;
     if (inst.rd == 0 && inst.rs1 == 1 && inst.imm == 0)
       p.robEntry.isRet = true;  // JALR x0, 0(x1): return
-    p.robEntry.ckpt.BPsnapshot = inst.BPSnapshot;
-    auto prfSnap = input.RATModule.snapshotRAT_PRF();
-    memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
-           sizeof(p.robEntry.ckpt.RATsnapshot.RAT_snapshot));
-    if (inst.allocDest)
-      p.robEntry.ckpt.RATsnapshot.RAT_snapshot[destination] = p.phy;
-    p.robEntry.ckpt.flHeadSeqCkpt =
-        input.PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
   }
   p.integerRS.robTag = p.robTag;
   return p;
 }
 
 IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
-                                      const Uop &inst, bool has_PC,
+                                      const UopView &inst, bool has_PC,
                                       bool isControl) {
   IssuePacket p{};
   if (input.ROBModule.isFull()) {
@@ -137,6 +130,7 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
   p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
+  p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
   p.robEntry.newPhy = p.phy;
@@ -149,21 +143,13 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
     p.robEntry.type = ROBType::LINK;
     if (inst.rd == 1)
       p.robEntry.isCall = true;  // JAL with return address register
-    p.robEntry.ckpt.BPsnapshot = inst.BPSnapshot;
-    auto prfSnap = input.RATModule.snapshotRAT_PRF();
-    memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
-           sizeof(p.robEntry.ckpt.RATsnapshot.RAT_snapshot));
-    if (inst.allocDest)
-      p.robEntry.ckpt.RATsnapshot.RAT_snapshot[destination] = p.phy;
-    p.robEntry.ckpt.flHeadSeqCkpt =
-        input.PRFModule.getHeadSeq() + (inst.allocDest ? 1 : 0);
   }
   p.integerRS.robTag = p.robTag;
   return p;
 }
 
 IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
-                                  const Uop &inst) {
+                                  const UopView &inst) {
   IssuePacket p{};
   if (input.ROBModule.isFull()) {
     return p;
@@ -217,17 +203,13 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
   p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
-  p.robEntry.ckpt.BPsnapshot = inst.BPSnapshot;
-  auto prfSnap = input.RATModule.snapshotRAT_PRF();
-  memcpy(p.robEntry.ckpt.RATsnapshot.RAT_snapshot, prfSnap.RAT_snapshot,
-         sizeof(p.robEntry.ckpt.RATsnapshot.RAT_snapshot));
-  p.robEntry.ckpt.flHeadSeqCkpt = input.PRFModule.getHeadSeq();
+  p.robEntry.ckptId = inst.ckptId;
   p.branchRS.robTag = p.robTag;
   return p;
 }
 
 IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
-                                     const Uop &inst, int n_bytes,
+                                     const UopView &inst, int n_bytes,
                                      bool isUnsigned) {
   IssuePacket p{};
   if (input.ROBModule.isFull() || input.LSQModule.isFull()) {
@@ -276,6 +258,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
   p.robEntry.newPhy = p.phy;
+  p.robEntry.ckptId = inst.ckptId;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination, p.phy,
                  p.robEntry.oldPhy);
@@ -284,7 +267,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
 }
 
 IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
-                                      const Uop &inst, int n_bytes) {
+                                      const UopView &inst, int n_bytes) {
   IssuePacket p{};
   if (input.ROBModule.isFull() || input.LSQModule.isFull()) {
     return p;
@@ -343,12 +326,13 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
     }
   }
   p.robEntry = ROBEntry(ROBType::STORE);
+  p.robEntry.ckptId = inst.ckptId;
   p.storeAddrRS.robTag = p.robTag;
   p.storeValueRS.robTag = p.robTag;
   return p;
 }
 
-Operation IssueArbiter::decodeOp(const Uop &inst) {
+Operation IssueArbiter::decodeOp(const UopView &inst) {
   if (inst.type == RISC_V::R) {
     int link_funct = (inst.funct3 << 7) | inst.funct7;
     switch (link_funct) {
@@ -443,7 +427,20 @@ IssuePacket IssueArbiter::build(const IssueArbiterInput &input) {
   IssuePacket issuePacket{};
   if (input.squashDetect.needSquash || input.DecodeUnitModule.isEmpty())
     return issuePacket;
-  const auto &inst = input.DecodeUnitModule.headUop();
+  UopView inst;
+  inst.type = input.DecodeUnitModule.headType();
+  inst.opcode = input.DecodeUnitModule.headOpcode();
+  inst.funct3 = input.DecodeUnitModule.headFunct3();
+  inst.funct7 = input.DecodeUnitModule.headFunct7();
+  inst.rd = input.DecodeUnitModule.headRd();
+  inst.rs1 = input.DecodeUnitModule.headRs1();
+  inst.rs2 = input.DecodeUnitModule.headRs2();
+  inst.imm = input.DecodeUnitModule.headImm();
+  inst.pc = input.DecodeUnitModule.headPc();
+  inst.isHalt = input.DecodeUnitModule.headIsHalt();
+  inst.allocDest = input.DecodeUnitModule.headAllocDest();
+  inst.predictedPC = input.DecodeUnitModule.headPredictedPC();
+  inst.ckptId = input.DecodeUnitModule.headCkptId();
   switch (inst.type) {
   case RISC_V::R: {
     issuePacket = issue_IntegerRS(input, inst, true, false, false);
@@ -458,6 +455,7 @@ IssuePacket IssueArbiter::build(const IssueArbiterInput &input) {
         issuePacket.robTag = input.ROBModule.getNextTag();
         issuePacket.robEntry = ROBEntry(ROBType::REGISTER);
         issuePacket.robEntry.dest = inst.rd;
+        issuePacket.robEntry.ckptId = inst.ckptId;
         issuePacket.robEntry.halt = true;
         issuePacket.robEntry.isCommitReady = true;
       } else {

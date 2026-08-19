@@ -65,6 +65,7 @@ public:
   LSQ() { std::memset(this, 0, sizeof(*this)); }
   bool isEmpty() const;
   bool isFull() const;
+  bool isActive(uint8_t index) const;
   void pushLoad(RobTag robTag, int n_bytes, bool isUnsigned);
   void pushStore(RobTag robTag, int n_bytes);
   void pop();

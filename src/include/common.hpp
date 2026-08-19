@@ -3,8 +3,8 @@
 #define COMMON_HPP
 #include <cstdint>
 using RobTag = uint8_t;
-constexpr int INTEGERRS_CAP = 8;
-constexpr int STORERS_CAP = 4;
+constexpr int INTEGERRS_CAP = 16;
+constexpr int STORERS_CAP = 8;
 constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
 constexpr int LSQ_CAP = 64;

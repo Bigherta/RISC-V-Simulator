@@ -1,12 +1,19 @@
 #include "../include/LSQ.hpp"
 #include "../include/CPU.hpp"
 #include "../include/ROB.hpp"
-#include "../include/util.hpp"
+#include <cstdint>
 #include <stdexcept>
+#include <sys/types.h>
 
 bool LSQ::isEmpty() const { return tail == head; }
 
 bool LSQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
+
+bool LSQ::isActive(uint8_t index) const {
+  if (head == tail)
+    return false;
+  return ((index - head + LSQ_CAP) & 0x3F) < ((tail - head + LSQ_CAP) & 0x3F);
+}
 
 void LSQ::pop() { head = (head + 1) & 0x3F; }
 
@@ -96,7 +103,12 @@ auto LSQ::planDataForward(int index,
     return plan;
   int unknownBiggestStore = index;
   int knownBiggestSameAddrStore = index;
-  for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
+  for (int k = 1; k <= LSQ_CAP; ++k) {
+    uint8_t i = (index + k) & 0x3F;
+    if (i == index || !isActive(i))
+      continue;
+    if (((i - index) & 0x3F) >= ((tail - index) & 0x3F))
+      continue;
     if (LSQqueue[i].isLoad && LSQqueue[i].address == LSQqueue[index].address) {
       auto candTag = LSQqueue[knownBiggestSameAddrStore].robTag;
       plan.writes[plan.count++] = {
@@ -126,7 +138,12 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
       return plan;
     int unknownBiggestStore = index;
     int knownBiggestSameAddrStore = index;
-    for (int i = (index + 1) & 0x3F; i != tail; i = (i + 1) & 0x3F) {
+    for (int k = 1; k <= LSQ_CAP; ++k) {
+      uint8_t i = (index + k) & 0x3F;
+      if (i == index || !isActive(i))
+        continue;
+      if (((i - index) & 0x3F) >= ((tail - index) & 0x3F))
+        continue;
       if (LSQqueue[i].isLoad && LSQqueue[i].address == address) {
         auto candTag = LSQqueue[knownBiggestSameAddrStore].robTag;
         plan.writes[plan.count++] = {
@@ -149,7 +166,13 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
     }
   } else {
     int unknownBiggestStore = index;
-    for (int i = index; i != ((head - 1) & 0x3F); i = (i + 63) & 0x3F) {
+    bool found = false;
+    for (int k = 0; k < LSQ_CAP; k++) {
+      uint8_t i = (index - k + LSQ_CAP) & 0x3F;
+      if (!isActive(i) || found)
+        continue;
+      if (((index - i) & 0x3F) > ((index - head) & 0x3F))
+        continue;
       if (!LSQqueue[i].isLoad) {
         if (LSQqueue[i].isAddressReady && LSQqueue[i].address == address) {
           plan.writes[plan.count++] = {static_cast<uint8_t>(index),
@@ -157,7 +180,7 @@ auto LSQ::planAddressForward(int index, uint32_t address) const
                                        unknownBiggestStore == index &&
                                            LSQqueue[i].valueState ==
                                                ValueState::READY};
-          break;
+          found = true;
         } else if (!LSQqueue[i].isAddressReady) {
           unknownBiggestStore = i;
         }
@@ -181,7 +204,11 @@ int LSQ::LoadDetect() const {
   bool hasUnknownStore = false;
   if (head == tail)
     return 0xFFFFFFFF;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+  bool blocked = false;
+  for (int k = 0; k < LSQ_CAP; k++) {
+    uint8_t cur = (head + k) & 0x3F;
+    if (!isActive(cur) || blocked)
+      continue;
     if (!LSQqueue[cur].isLoad) {
       if (!LSQqueue[cur].isAddressReady) {
         hasUnknownStore = true;
@@ -189,19 +216,27 @@ int LSQ::LoadDetect() const {
     } else if (LSQqueue[cur].isAddressReady &&
                LSQqueue[cur].valueState == ValueState::NOTREADY) {
       // Load with known address, value not yet dispatched to memory
-      if (hasUnknownStore)
-        break;
+      if (hasUnknownStore) {
+        blocked = true;
+        continue;
+      }
       if (LSQqueue[cur].valueState == ValueState::NOTREADY) {
         bool hasPendingSameAddrStore = false;
-        for (int i = head; i != cur; i = (i + 1) & 0x3F) {
+        for (int j = 0; j < LSQ_CAP; ++j) {
+          uint8_t i = (head + j) & 0x3F;
+          if (!isActive(i) || hasPendingSameAddrStore)
+            continue;
+          if (((i - head) & 0x3F) >= ((cur - head) & 0x3F))
+            continue;
           if (!LSQqueue[i].isLoad && LSQqueue[i].isAddressReady &&
               LSQqueue[i].address == LSQqueue[cur].address) {
             hasPendingSameAddrStore = true;
-            break;
           }
         }
-        if (hasPendingSameAddrStore)
-          break;
+        if (hasPendingSameAddrStore) {
+          blocked = true;
+          continue;
+        }
         // Still not resolved but no jeopardizing store, can load from DMEM
         return cur;
       }
@@ -213,16 +248,21 @@ int LSQ::LoadDetect() const {
 int LSQ::CDBDetect() const {
   if (head == tail)
     return 0xFFFFFFFF;
-  for (int cur = head; cur != tail; cur = (cur + 1) & 0x3F) {
+  bool found = false;
+  int detectedIndex = 0xFFFFFFFF;
+  for (int k = 0; k < LSQ_CAP; ++k) {
+    uint8_t cur = (head + k) & 0x3F;
+    if (!isActive(cur) || found) continue;
     if (LSQqueue[cur].isLoad) {
       if (LSQqueue[cur].isAddressReady &&
           LSQqueue[cur].valueState == ValueState::READY &&
           !LSQqueue[cur].isCDBBroadcast) {
-        return cur;
+        detectedIndex = cur;
+        found = true;
       }
     }
   }
-  return 0xFFFFFFFF;
+  return detectedIndex;
 }
 
 bool LSQ::isReadyToCommit(int index) const {

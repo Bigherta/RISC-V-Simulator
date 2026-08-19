@@ -55,11 +55,10 @@ void PRF::write(int index, int32_t value) {
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   auto head = input.LSQModule.getHead();
-  auto tail = input.LSQModule.getTail();
-  for (int i = head; i != ((head + (LSQ_CAP >> 3)) & 0x3F);
-       i = (i + 1) & 0x3F) {
-    if (i == tail)
-      break;
+  for (int k = 0; k < (LSQ_CAP >> 3); ++k) {
+    uint8_t i = (head + k) & 0x3F;
+    if (!input.LSQModule.isActive(i))
+      continue;
     if (input.LSQModule.isReadyToCommit(i)) {
       auto lsqTag = input.LSQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||

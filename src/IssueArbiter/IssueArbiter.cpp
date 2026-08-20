@@ -79,7 +79,8 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.robEntry.dest = destination;
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
-  p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
@@ -129,7 +130,8 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.robEntry.dest = destination;
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
-  p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
@@ -202,7 +204,8 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   p.robEntry = ROBEntry(ROBType::BRANCH);
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
-  p.robEntry.lsqTailSnapshot = input.LSQModule.getTail();
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.branchRS.robTag = p.robTag;
   return p;
@@ -212,7 +215,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
                                      const UopView &inst, int n_bytes,
                                      bool isUnsigned) {
   IssuePacket p{};
-  if (input.ROBModule.isFull() || input.LSQModule.isFull()) {
+  if (input.ROBModule.isFull() || input.LQModule.isFull()) {
     return p;
   }
   int loadSlot = input.RSModule.tryAllocLoad();
@@ -227,7 +230,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.isUnsigned = isUnsigned;
   p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
-  p.loadRS.lsqIndex = input.LSQModule.getTail();
+  p.loadRS.memIndex = input.LQModule.getTail();
   p.loadRS.free = false;
   p.loadRS.op = decodeOp(inst);
   auto regNum1 = inst.rs1;
@@ -269,7 +272,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
 IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
                                       const UopView &inst, int n_bytes) {
   IssuePacket p{};
-  if (input.ROBModule.isFull() || input.LSQModule.isFull()) {
+  if (input.ROBModule.isFull() || input.SQModule.isFull()) {
     return p;
   }
   int storeAddrSlot = input.RSModule.tryAllocStoreAddress();
@@ -285,8 +288,9 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
   p.nBytes = n_bytes;
   p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
-  p.storeAddrRS.lsqIndex = input.LSQModule.getTail();
-  p.storeValueRS.lsqIndex = p.storeAddrRS.lsqIndex;
+  p.storeAddrRS.memIndex =
+      static_cast<uint8_t>(input.SQModule.getTail() | MEM_STORE_BIT);
+  p.storeValueRS.memIndex = p.storeAddrRS.memIndex;
   p.storeAddrRS.free = false;
   p.storeAddrRS.op = decodeOp(inst);
   auto regNum1 = inst.rs1;

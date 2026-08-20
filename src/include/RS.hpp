@@ -16,7 +16,7 @@ struct ReservationStation {
 };
 
 struct AddressRS : public ReservationStation {
-  uint8_t lsqIndex = 0;
+  uint8_t memIndex = 0;
   AddressRS() : ReservationStation() {}
   AddressRS(Operation type) : ReservationStation(type) {}
 };
@@ -34,7 +34,7 @@ struct StoreValueReservationStation {
   int32_t vrs2 = 0;
   int qrs2 = -1;
   RobTag robTag = 0xFF;
-  uint8_t lsqIndex = 0;
+  uint8_t memIndex = 0;
   StoreValueReservationStation() : free(true) {}
 };
 

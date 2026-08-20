@@ -3,7 +3,8 @@
 #include "ALU.hpp"
 #include "BRU.hpp"
 #include "Decoder.hpp"
-#include "LSQ.hpp"
+#include "SQ.hpp"
+#include "LQ.hpp"
 #include "PRF.hpp"
 #include "RAT.hpp"
 #include "ROB.hpp"
@@ -18,7 +19,7 @@ struct FlushRequest {
 struct CDBCandidate {
   bool valid = false;
   ArithmeticCalculateResult result{};
-  uint8_t lsqIndex = 0;
+  uint8_t memIndex = 0;
 };
 
 struct systemState;
@@ -57,7 +58,7 @@ public:
   // build: collect the two CDB candidates from the module snapshots
   // (ALU head / LSQ CDBDetect) then arbitrate -- the whole read()-side
   // construction, producers stay unknown to the arbiter.
-  static CDBOutput build(const ALU &, const LSQ &, const SquashInfo &);
+  static CDBOutput build(const ALU &, const LQ &, const SquashInfo &);
   // arbitrate between the two CDB candidates (ALU result / LSQ load value).
   // Candidates are plain data collected from the module snapshots in read();
   // the arbiter itself does not know the producers.
@@ -71,4 +72,11 @@ public:
   static DispatchBus arbitrate(const RSUnit &RS, const ALU &ALU, const AGU &AGU,
                                const BRU &BRU, const ROB &ROB,
                                const SquashInfo &squash);
+};
+
+class MemRequestArbiter {
+public:
+  static MemDispatchDecision arbitrate(const LQ &LQ, const SQ &SQ,
+                                       const ROB &rob, const DMEM &dmem,
+                                       const SquashInfo &squash);
 };

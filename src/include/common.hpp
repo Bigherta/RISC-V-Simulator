@@ -8,6 +8,11 @@ constexpr int STORERS_CAP = 8;
 constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
 constexpr int LSQ_CAP = 64;
+constexpr int LQ_CAP = 64;
+constexpr int SQ_CAP = 64;
+constexpr uint8_t MEM_STORE_BIT = 0x40;  // memIndex 类型位: 0=load(LQ), 1=store(SQ)
+inline bool isStoreMem(uint8_t m) { return (m & MEM_STORE_BIT) != 0; }
+inline uint8_t memSlot(uint8_t m) { return m & 0x3F; }
 constexpr int ROB_CAP = 64;
 constexpr int FQ_CAP = 8;
 constexpr int IQ_CAP = 16;
@@ -27,6 +32,11 @@ constexpr int RAS_CAP = 128;
 constexpr int PRF_CAP = 128;
 constexpr int IMEM_CAP = 4;
 constexpr int CKPT_CAP = 128;
+enum class ValueState {
+  NOTREADY,
+  FETCHING,
+  READY,
+};
 enum class Operation {
   ADD,
   SUB,
@@ -72,7 +82,7 @@ struct ArithmeticCalculateResult {
 struct AddressCalculateResult {
   int32_t value;
   RobTag robTag;
-  uint8_t lsqIndex;
+  uint8_t memIndex;
 };
 
 struct BranchResult {
@@ -89,7 +99,7 @@ struct MemRequest {
   bool isSigned;
   int n_bytes;
   uint8_t robTag;
-  uint8_t lsqIndex;
+  uint8_t memIndex;
 };
 
 struct MemDispatchDecision {
@@ -109,8 +119,8 @@ struct CDBOutput {
   ArithmeticCalculateResult result;
   bool valid;
   bool aluGranted;
-  bool lsqGranted;
-  uint8_t lsqIndex = 0;
+  bool memGranted;
+  uint8_t memIndex = 0;
 };
 
 struct CDBBypassResult {
@@ -193,7 +203,7 @@ struct CDBBus {
   int broadcastValue = 0;
   bool lsqSetCDB = false;
   RobTag robTag = 0;
-  uint8_t lsqIndex = 0;
+  uint8_t memIndex = 0;
   static CDBBus build(const CDBOutput &cdbOut, const ROB &ROBModule,
                       const PRF &PRFModule, const SquashInfo &squashDetect);
 };
@@ -215,7 +225,7 @@ struct FetchDecision {
 };
 struct LoadResponse {
   bool valid = false;
-  uint8_t lsqIndex = 0;
+  uint8_t memIndex = 0;
   int32_t value = 0;
 };
 #endif // COMMON_HPP

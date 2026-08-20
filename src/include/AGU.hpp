@@ -3,15 +3,13 @@
 #define AGU_HPP
 #include "common.hpp"
 #include "RS.hpp"
-#include "LSQ.hpp"
 struct systemState;
 struct AGUInput {
   SquashInfo squashDetect;
-  const LSQ &LSQModule;
   const RSUnit &RSModule;
   DispatchInfo dispatch;              
-  AGUInput(const LSQ &lsq, const RSUnit &rs)
-      : LSQModule(lsq), RSModule(rs) {}
+  AGUInput(const RSUnit &rs)
+      : RSModule(rs) {}
 };
 class AGU {
   friend struct ReorderTester;
@@ -22,12 +20,12 @@ public:
   bool isFull() const;
   bool isEmpty() const;
   void push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
-            uint8_t lsqIndex);
+            uint8_t memIndex);
   void remove(uint8_t robTag);
   void flush(uint8_t tag);
   int32_t headValue() const;
   uint8_t headRobTag() const;
-  uint8_t headlsqIndex() const;
+  uint8_t headMemIndex() const;
   bool isValid(int index) const { return slotValid[index]; }
   void tick(const AGUInput&, systemState&);
 };

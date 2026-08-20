@@ -66,8 +66,12 @@ void ROB::setROBCommitReady(int index) {
 
 int ROB::getPredictedPC(int index) const { return ROBqueue[index].predictedPC; }
 
-uint8_t ROB::getLsqTailSnapshot(int index) const {
-  return ROBqueue[index].lsqTailSnapshot;
+uint8_t ROB::getLqtTailSnapshot(int index) const {
+  return ROBqueue[index].lqtTailSnapshot;
+}
+
+uint8_t ROB::getSqtTailSnapshot(int index) const {
+  return ROBqueue[index].sqTailSnapshot;
 }
 
 int ROB::getNewPhy(int index) const { return ROBqueue[index].newPhy; }
@@ -110,19 +114,36 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       CPUstate.ROBModule.setROBCommitReady(getIndexByTag(brRobTag));
     }
   }
-  // LSQ set ROB ready
-  auto head = input.LSQModule.getHead();
-  for (int k = 0; k < (LSQ_CAP >> 3); ++k) {
-    uint8_t i = (head + k) & 0x3F;
-    if (!input.LSQModule.isActive(i))
+  // LQ set ROB ready (loads)
+  auto lqHead = input.LQModule.getHead();
+  for (int k = 0; k < (LQ_CAP >> 3); ++k) {
+    uint8_t i = (lqHead + k) & 0x3F;
+    if (!input.LQModule.isActive(i))
       continue;
-    if (input.LSQModule.isReadyToCommit(i)) {
-      auto lsqTag = input.LSQModule.getRobTag(i);
+    if (input.LQModule.isReadyToCommit(i)) {
+      auto lqTag = input.LQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           ROB::isOlder(lsqTag, input.squashDetect.SquashTag))) {
-        if (!isEmpty() && !ROB::isOlder(lsqTag, getHead())) {
-          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(lsqTag));
+           ROB::isOlder(lqTag, input.squashDetect.SquashTag))) {
+        if (!isEmpty() && !ROB::isOlder(lqTag, getHead())) {
+          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(lqTag));
+        }
+      }
+    }
+  }
+  // SQ set ROB ready (stores)
+  auto sqHead = input.SQModule.getHead();
+  for (int k = 0; k < (SQ_CAP >> 3); ++k) {
+    uint8_t i = (sqHead + k) & 0x3F;
+    if (!input.SQModule.isActive(i))
+      continue;
+    if (input.SQModule.isReadyToCommit(i)) {
+      auto sqTag = input.SQModule.getRobTag(i);
+      if (!input.squashDetect.needSquash ||
+          (input.squashDetect.needSquash &&
+           ROB::isOlder(sqTag, input.squashDetect.SquashTag))) {
+        if (!isEmpty() && !ROB::isOlder(sqTag, getHead())) {
+          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(sqTag));
         }
       }
     }

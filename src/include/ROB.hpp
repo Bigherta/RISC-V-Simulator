@@ -1,6 +1,7 @@
 #pragma once
 #include "BRU.hpp"
-#include "LSQ.hpp"
+#include "LQ.hpp"
+#include "SQ.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -20,7 +21,8 @@ struct ROBEntry {
   bool halt = false;
   bool isCall = false; // JAL rd==1
   bool isRet = false;  // JALR x0, 0(x1)
-  uint8_t lsqTailSnapshot = 0;
+  uint8_t lqtTailSnapshot = 0;
+  uint8_t sqTailSnapshot = 0;
   uint8_t ckptId = 0;
   int newPhy = -1;
   int oldPhy = -1;
@@ -30,10 +32,12 @@ struct ROBInput {
   SquashInfo squashDetect;
   CDBOutput cdbOut;
   const BRU &BRUModule;
-  const LSQ &LSQModule;
+  const LQ &LQModule;
+  const SQ &SQModule;
   const IssuePacket &issuePacket;
-  ROBInput(const BRU &bru, const LSQ &lsq, const IssuePacket &pkt)
-      : BRUModule(bru), LSQModule(lsq), issuePacket(pkt) {}
+  ROBInput(const BRU &bru, const LQ &lq, const SQ &sq,
+          const IssuePacket &pkt)
+      : BRUModule(bru), LQModule(lq), SQModule(sq), issuePacket(pkt) {}
 };
 class ROB {
   friend struct ReorderTester;
@@ -72,7 +76,8 @@ public:
   bool isHalt(int index) const;
   uint8_t getCkptId(int index) const;
   int getPredictedPC(int index) const;
-  uint8_t getLsqTailSnapshot(int index) const;
+  uint8_t getLqtTailSnapshot(int index) const;
+  uint8_t getSqtTailSnapshot(int index) const;
   int getNewPhy(int index) const;
   int getOldPhy(int index) const;
   bool isCall(int index) const;

@@ -1,6 +1,7 @@
 #include "../include/Arbiter.hpp"
 #include "../include/CPU.hpp"
 #include "../include/util.hpp"
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 
@@ -34,7 +35,8 @@ SquashInfo FlushArbiter::arbitResult() const {
   bool found = false;
   for (int i = 0; i < FLUSHARBITER_CAP; ++i) {
     if (requests[i].valid) {
-      if (!found || ROB::isOlder(requests[i].requestArgs.SquashTag, result.SquashTag)) {
+      if (!found ||
+          ROB::isOlder(requests[i].requestArgs.SquashTag, result.SquashTag)) {
         result = requests[i].requestArgs;
         found = true;
       }
@@ -96,18 +98,17 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
           isControl) {
         SquashInfo JumpSquash;
         const auto pc = static_cast<uint32_t>(cdbOut.result.value);
-        if (pc != input.ROBModule.getPredictedPC(input.ROBModule.getIndexByTag(
-                     cdbOut.result.robTag))) {
+        if (pc != input.ROBModule.getPredictedPC(
+                      input.ROBModule.getIndexByTag(cdbOut.result.robTag))) {
           if (debug::enabled(debug::TOPIC_BRANCH))
-            debug::print("squash tag=%u pc=%u (jalr)\n",
-                         cdbOut.result.robTag, pc);
+            debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.result.robTag,
+                         pc);
           JumpSquash.needSquash = true;
           JumpSquash.SquashPC = pc;
           JumpSquash.SquashIndex =
               input.ROBModule.getIndexByTag(cdbOut.result.robTag);
           JumpSquash.SquashTag = cdbOut.result.robTag;
-          JumpSquash.CkptId =
-              input.ROBModule.getCkptId(JumpSquash.SquashIndex);
+          JumpSquash.CkptId = input.ROBModule.getCkptId(JumpSquash.SquashIndex);
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
@@ -116,7 +117,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
   }
 }
 
-CDBOutput CDBArbiter::build(const ALU &ALUModule, const LSQ &LSQModule,
+CDBOutput CDBArbiter::build(const ALU &ALUModule, const LQ &LQModule,
                             const SquashInfo &squash) {
   CDBCandidate aluCand{};
   if (!ALUModule.isEmpty()) {
@@ -126,12 +127,12 @@ CDBOutput CDBArbiter::build(const ALU &ALUModule, const LSQ &LSQModule,
     aluCand.result.isControl = ALUModule.headIsControl();
   }
   CDBCandidate lsqCand{};
-  auto lsqCDBDetect = LSQModule.CDBDetect();
+  auto lsqCDBDetect = LQModule.CDBDetect();
   if (lsqCDBDetect != -1) {
     lsqCand.valid = true;
-    lsqCand.lsqIndex = static_cast<uint8_t>(lsqCDBDetect);
-    lsqCand.result.robTag = LSQModule.getRobTag(lsqCDBDetect);
-    lsqCand.result.value = LSQModule.getValue(lsqCDBDetect);
+    lsqCand.memIndex = static_cast<uint8_t>(lsqCDBDetect);
+    lsqCand.result.robTag = LQModule.getRobTag(lsqCDBDetect);
+    lsqCand.result.value = LQModule.getValue(lsqCDBDetect);
   }
   return arbitrate(aluCand, lsqCand, squash);
 }
@@ -141,21 +142,18 @@ CDBBus CDBBus::build(const CDBOutput &cdbOut, const ROB &ROBModule,
   CDBBus cdbBus{};
   if (cdbOut.valid) {
     auto &r = cdbOut.result;
-    bool guard =
-        !squashDetect.needSquash ||
-        ROB::isOlder(r.robTag, squashDetect.SquashTag);
-    bool robOk = !ROBModule.isEmpty() &&
-                 !ROB::isOlder(r.robTag, ROBModule.getHead());
+    bool guard = !squashDetect.needSquash ||
+                 ROB::isOlder(r.robTag, squashDetect.SquashTag);
+    bool robOk =
+        !ROBModule.isEmpty() && !ROB::isOlder(r.robTag, ROBModule.getHead());
     cdbBus.broadcastValid = guard && (!r.isControl || robOk);
     int newPhy =
         robOk ? ROBModule.getNewPhy(ROBModule.getIndexByTag(r.robTag)) : -1;
     cdbBus.broadcastValue =
-        r.isControl
-            ? (newPhy >= 0 ? PRFModule.getValue(newPhy) : 0)
-            : r.value;
-    cdbBus.lsqSetCDB = guard && cdbOut.lsqGranted;
+        r.isControl ? (newPhy >= 0 ? PRFModule.getValue(newPhy) : 0) : r.value;
+    cdbBus.lsqSetCDB = guard && cdbOut.memGranted;
     cdbBus.robTag = r.robTag;
-    cdbBus.lsqIndex = cdbOut.lsqIndex;
+    cdbBus.memIndex = cdbOut.memIndex;
   }
   return cdbBus;
 }
@@ -167,14 +165,12 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
   uint8_t squashTag = squash.SquashTag;
   bool aluValid = aluCandidate.valid;
   ArithmeticCalculateResult aluResult = aluCandidate.result;
-  if (aluValid && needSquash &&
-      !ROB::isOlder(aluResult.robTag, squashTag))
+  if (aluValid && needSquash && !ROB::isOlder(aluResult.robTag, squashTag))
     aluValid = false;
 
   bool lsqValid = lsqCandidate.valid;
   ArithmeticCalculateResult lsqResult = lsqCandidate.result;
-  if (lsqValid && needSquash &&
-      !ROB::isOlder(lsqResult.robTag, squashTag))
+  if (lsqValid && needSquash && !ROB::isOlder(lsqResult.robTag, squashTag))
     lsqValid = false;
   CDBOutput out = {};
 
@@ -191,8 +187,8 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
   if (!aluValid && lsqValid) {
     out.result = lsqResult;
     out.valid = true;
-    out.lsqGranted = true;
-    out.lsqIndex = lsqCandidate.lsqIndex;
+    out.memGranted = true;
+    out.memIndex = lsqCandidate.memIndex;
     return out;
   }
 
@@ -204,8 +200,8 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
   } else {
     out.result = lsqResult;
     out.valid = true;
-    out.lsqGranted = true;
-    out.lsqIndex = lsqCandidate.lsqIndex;
+    out.memGranted = true;
+    out.memIndex = lsqCandidate.memIndex;
   }
   return out;
 }
@@ -235,8 +231,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
       dispatch.alu.robTag = bestTag;
       dispatch.alu.rsType = RSType::Integer;
       dispatch.alu.valid = true;
-      if (squash.needSquash &&
-          !ROB::isOlder(bestTag, squash.SquashTag))
+      if (squash.needSquash && !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.alu.valid = false;
     }
   }
@@ -274,8 +269,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
       dispatch.agu.robTag = bestTag;
       dispatch.agu.rsType = bestType;
       dispatch.agu.valid = true;
-      if (squash.needSquash &&
-          !ROB::isOlder(bestTag, squash.SquashTag))
+      if (squash.needSquash && !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.agu.valid = false;
     }
   }
@@ -299,10 +293,56 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
       dispatch.bru.robTag = bestTag;
       dispatch.bru.rsType = RSType::Branch;
       dispatch.bru.valid = true;
-      if (squash.needSquash &&
-          !ROB::isOlder(bestTag, squash.SquashTag))
+      if (squash.needSquash && !ROB::isOlder(bestTag, squash.SquashTag))
         dispatch.bru.valid = false;
     }
   }
   return dispatch;
+}
+
+MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
+                                                 const ROB &rob,
+                                                 const DMEM &dmem,
+                                                 const SquashInfo &squash) {
+  MemDispatchDecision memDecision{};
+  if (!dmem.isBusy() && !SQ.isEmpty()) {
+    auto storeTag = SQ.headRobTag();
+    bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.getHead());
+    bool atHeadReady = !committed && SQ.headRobTag() == rob.getHead() &&
+                       rob.isCommitReadyAt(rob.getIndexByTag(SQ.headRobTag()));
+    if (committed || atHeadReady) {
+      MemRequest newRequest{};
+      newRequest.address = SQ.getAddress(SQ.getHead());
+      newRequest.value = SQ.getValue(SQ.getHead());
+      newRequest.n_bytes = SQ.getNBytes(SQ.getHead());
+      newRequest.op = Operation::Store;
+      newRequest.robTag = storeTag;
+      newRequest.memIndex = static_cast<uint8_t>(SQ.getHead() | MEM_STORE_BIT);
+      memDecision.valid = true;
+      memDecision.request = newRequest;
+    }
+  }
+  if (memDecision.valid)
+    return memDecision;
+  auto loadIndex = LQ.LoadDetect();
+  if (loadIndex != 0xFFFFFFFF && !dmem.isBusy()) {
+    auto loadAddr = LQ.getAddress(loadIndex);
+    auto loadTag = LQ.getRobTag(loadIndex);
+    if (SQ.replyToLoadDetect(loadAddr, loadTag)) {
+      MemRequest newRequest{};
+      newRequest.address = LQ.getAddress(loadIndex);
+      newRequest.isSigned = !LQ.getIsUnsigned(loadIndex);
+      newRequest.n_bytes = LQ.getNBytes(loadIndex);
+      newRequest.op = Operation::Load;
+      newRequest.robTag = LQ.getRobTag(loadIndex);
+      newRequest.memIndex = static_cast<uint8_t>(loadIndex);
+      if (!squash.needSquash ||
+          (squash.needSquash &&
+           ROB::isOlder(newRequest.robTag, squash.SquashTag))) {
+        memDecision.valid = true;
+        memDecision.request = newRequest;
+      }
+    }
+  }
+  return memDecision;
 }

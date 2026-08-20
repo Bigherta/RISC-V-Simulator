@@ -11,7 +11,8 @@
 #include "Decoder.hpp"
 #include "FetchQueue.hpp"
 #include "IMEM.hpp"
-#include "LSQ.hpp"
+#include "LQ.hpp"
+#include "SQ.hpp"
 #include "Memory.hpp"
 #include "PRF.hpp"
 #include "RAT.hpp"
@@ -28,7 +29,8 @@ struct systemState {
   ALU ALUModule;
   AGU AGUModule;
   BRU BRUModule;
-  LSQ LSQModule;
+  LQ LQModule;
+  SQ SQModule;
   FetchQueue FQModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
@@ -53,7 +55,8 @@ private:
   ALU ALUModule;
   AGU AGUModule;
   BRU BRUModule;
-  LSQ LSQModule;
+  LQ LQModule;
+  SQ SQModule;
   FetchQueue FQModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
@@ -63,20 +66,24 @@ private:
   FlushArbiter flushArbiter;
   CDBOutput cdbOut;
   IssuePacket issuePacket;
-  AGUInput aguInput{LSQModule, RSModule};
+  AGUInput aguInput{RSModule};
   ALUInput aluInput{RSModule};
   BRUInput bruInput{ROBModule, RSModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
-  DMEMInput dmemInput{LSQModule};
+  DMEMInput dmemInput{};
   DecodeInput decodeInput{FQModule, issuePacket};
-  LSQInput lsqInput{AGUModule, RSModule, ROBModule, DMEMModule, issuePacket};
+  LQInput lqInput{AGUModule, RSModule, ROBModule, DMEMModule, SQModule,
+                  issuePacket};
+  SQInput sqInput{AGUModule, RSModule, ROBModule, DMEMModule, LQModule,
+                  issuePacket};
   RSInput rsInput{ROBModule, issuePacket};
-  ROBInput robInput{BRUModule, LSQModule, issuePacket};
-  PRFInput prfInput{LSQModule, ROBModule, issuePacket};
+  ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
+  PRFInput prfInput{LQModule, ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};
   FlushArbiterInput flarbInput{BRUModule, ROBModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
-                               RATModule,        PRFModule, LSQModule};
+                               RATModule,        PRFModule, LQModule,
+                               SQModule};
   SquashInfo squashDetect;
   FetchDecision fetchDecision;
   IMEMInput imemInput{FQModule};

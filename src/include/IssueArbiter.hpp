@@ -2,6 +2,8 @@
 #include "Decoder.hpp"
 #include "RS.hpp"
 #include "ROB.hpp"
+#include "LQ.hpp"
+#include "SQ.hpp"
 struct IssuePacket {
   bool valid = false;
   bool allocDest = false;
@@ -36,14 +38,16 @@ struct IssueArbiterInput {
   const RSUnit &RSModule;
   const RAT &RATModule;
   const PRF &PRFModule;
-  const LSQ &LSQModule;
+  const LQ &LQModule;
+  const SQ &SQModule;
   CDBOutput cdbOut;
   SquashInfo squashDetect;
   IssueArbiterInput(const DecodeUnit &DecodeUnitModule, const ROB &ROBModule,
                     const RSUnit &RSModule, const RAT &RATModule,
-                    const PRF &PRFModule, const LSQ &LSQModule)
+                    const PRF &PRFModule, const LQ &LQModule, const SQ &SQModule)
       : DecodeUnitModule(DecodeUnitModule), RATModule(RATModule),
-        ROBModule(ROBModule), RSModule(RSModule), PRFModule(PRFModule),LSQModule(LSQModule){}
+        ROBModule(ROBModule), RSModule(RSModule), PRFModule(PRFModule),
+        LQModule(LQModule), SQModule(SQModule) {}
 };
 struct IssueArbiter {
 private:

@@ -2,7 +2,6 @@
 #ifndef DMEM_HPP
 #define DMEM_HPP
 #include "../include/Memory.hpp"
-#include "../include/LSQ.hpp"
 #include "../include/common.hpp"
 
 struct systemState;
@@ -10,8 +9,7 @@ struct systemState;
 struct DMEMInput {
   SquashInfo squashDetect;
   MemDispatchDecision decision;
-  const LSQ& LSQModule;
-  DMEMInput(const LSQ &lsq) : LSQModule(lsq) {}
+  DMEMInput() = default;
 };
 
 // Data memory.

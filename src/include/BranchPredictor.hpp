@@ -26,7 +26,6 @@ class BranchPredictor {
 private:
   struct Cand {
     bool valid = false;
-    uint64_t seq = 0;
     int32_t pc = 0;
     bool taken = false;
     int32_t target = 0;

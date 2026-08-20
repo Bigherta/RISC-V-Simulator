@@ -1,5 +1,5 @@
 #pragma once
-#include "LSQ.hpp"
+#include "LQ.hpp"
 #include "ROB.hpp"
 #include "common.hpp"
 #include <cstdint>
@@ -12,10 +12,10 @@ struct PRFInput {
   const IssuePacket &issuePacket;
   SquashInfo squashDetect;
   CDBOutput cdbOut;
-  const LSQ &LSQModule;
+  const LQ &LQModule;
   const ROB &ROBModule;
-  PRFInput(const LSQ &lsq, const ROB &rob, const IssuePacket &pkt)
-      : LSQModule(lsq), ROBModule(rob), issuePacket(pkt) {}
+  PRFInput(const LQ &lq, const ROB &rob, const IssuePacket &pkt)
+      : LQModule(lq), ROBModule(rob), issuePacket(pkt) {}
 };
 struct systemState;
 class PRF {
@@ -34,7 +34,6 @@ public:
   void push(int index);
   bool isFreeListEmpty() const;
   uint32_t getHeadSeq() const;
-  uint32_t getTailSeq() const;
   uint8_t getFreeListSlot(uint32_t seq) const {
     return freeList[seq & (PRF_CAP - 1)];
   }

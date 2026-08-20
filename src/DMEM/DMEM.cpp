@@ -39,7 +39,7 @@ LoadResponse DMEM::LoadReturn(const SquashInfo &squash) const {
     if (reply.op == Operation::Load &&
         (!squash.needSquash || ROB::isOlder(reply.robTag, squash.SquashTag))) {
       response.valid = true;
-      response.lsqIndex = reply.lsqIndex;
+      response.memIndex = reply.memIndex;
       response.value = reply.value;
     }
   }

@@ -15,7 +15,8 @@ void CPU::comb() {
   memcpy(&ALUModule, &CPUstate.ALUModule, sizeof(ALUModule));
   memcpy(&AGUModule, &CPUstate.AGUModule, sizeof(AGUModule));
   memcpy(&BRUModule, &CPUstate.BRUModule, sizeof(BRUModule));
-  memcpy(&LSQModule, &CPUstate.LSQModule, sizeof(LSQModule));
+  memcpy(&LQModule, &CPUstate.LQModule, sizeof(LQModule));
+  memcpy(&SQModule, &CPUstate.SQModule, sizeof(SQModule));
   memcpy(&FQModule, &CPUstate.FQModule, sizeof(FQModule));
   memcpy(&DecodeUnitModule, &CPUstate.DecodeUnitModule,
          sizeof(DecodeUnitModule));
@@ -33,7 +34,7 @@ void CPU::comb() {
   fqInput.squashDetect = squashDetect;
   fqInput.haltFetched = IMEMModule.isHaltFetched();
   bpInput.fetchDecision = fetchDecision;
-  cdbOut = CDBArbiter::build(ALUModule, LSQModule, squashDetect);
+  cdbOut = CDBArbiter::build(ALUModule, LQModule, squashDetect);
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
       RSModule, ALUModule, AGUModule, BRUModule, ROBModule, squashDetect);
   aguInput.squashDetect = squashDetect;
@@ -45,11 +46,41 @@ void CPU::comb() {
   rsInput.dispatchBus = dispatchBus;
   dmemInput.squashDetect = squashDetect;
   decodeInput.squashDetect = squashDetect;
-  lsqInput.squashDetect = squashDetect;
-  auto memDispatch =
-      LSQModule.selectMemRequest(ROBModule, DMEMModule, squashDetect);
+  lqInput.squashDetect = squashDetect;
+  sqInput.squashDetect = squashDetect;
+  auto memDispatch = MemRequestArbiter::arbitrate(LQModule, SQModule, ROBModule,
+                                                  DMEMModule, squashDetect);
   dmemInput.decision = memDispatch;
-  lsqInput.decision = memDispatch;
+  lqInput.decision = memDispatch;
+  sqInput.decision = memDispatch;
+  // store value-ready broadcast (data event): scan ready storeValueRS entries
+  // against the SQ snapshot (store address must already be known)
+  for (int i = 0; i < STORERS_CAP; ++i) {
+    lqInput.storeNotifies[i] = StoreNotify{};
+    if (!RSModule.storeValueRS[i].free &&
+        RSModule.storeValueRS[i].qrs2 == -1) {
+      auto tag = RSModule.storeValueRS[i].robTag;
+      if (!squashDetect.needSquash ||
+          (squashDetect.needSquash &&
+           ROB::isOlder(tag, squashDetect.SquashTag))) {
+        lqInput.storeNotifies[i] = SQModule.planDataForward(
+            memSlot(RSModule.storeValueRS[i].memIndex),
+            RSModule.storeValueRS[i].vrs2);
+      }
+    }
+  }
+  // store address-ready broadcast (address event): AGU head is a store
+  lqInput.storeAddrNotify = StoreNotify{};
+  if (!AGUModule.isEmpty() && isStoreMem(AGUModule.headMemIndex())) {
+    auto aguRobTag = AGUModule.headRobTag();
+    if (!squashDetect.needSquash ||
+        (squashDetect.needSquash &&
+         ROB::isOlder(aguRobTag, squashDetect.SquashTag))) {
+      lqInput.storeAddrNotify = SQModule.planAddressForward(
+          memSlot(AGUModule.headMemIndex()),
+          static_cast<uint32_t>(AGUModule.headValue()));
+    }
+  }
   rsInput.squashDetect = squashDetect;
   robInput.squashDetect = squashDetect;
   robInput.cdbOut = cdbOut;
@@ -65,10 +96,10 @@ void CPU::comb() {
   bpInput.squashDetect = squashDetect;
   bpInput.cdbOut = cdbOut;
   CDBBus cdbBus = CDBBus::build(cdbOut, ROBModule, PRFModule, squashDetect);
-  lsqInput.cdbBus = cdbBus;
+  lqInput.cdbBus = cdbBus;
   rsInput.cdbBus = cdbBus;
   auto LoadResponse = DMEMModule.LoadReturn(squashDetect);
-  lsqInput.loadResp = LoadResponse;
+  lqInput.loadResp = LoadResponse;
 }
 
 void CPU::run() {
@@ -78,7 +109,8 @@ void CPU::run() {
     comb();
     IMEMModule.tick(imemInput, CPUstate);
     FQModule.tick(fqInput, CPUstate);
-    LSQModule.tick(lsqInput, CPUstate);
+    LQModule.tick(lqInput, CPUstate);
+    SQModule.tick(sqInput, CPUstate);
     ROBModule.tick(robInput, CPUstate);
     PRFModule.tick(prfInput, CPUstate);
     ALUModule.tick(aluInput, CPUstate);
@@ -107,6 +139,6 @@ void CPU::run() {
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &
-                0xFF)
+                 0xFF)
             << std::endl;
 }

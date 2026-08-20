@@ -2,10 +2,10 @@
 #include "../include/CPU.hpp"
 #include <cstdint>
 void AGU::push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
-               uint8_t lsqIndex) {
+               uint8_t memIndex) {
   int32_t value;
   value = op1 + op2;
-  AddressCalculateResult result{value, robTag, lsqIndex};
+  AddressCalculateResult result{value, robTag, memIndex};
   for (int i = 0; i < AGU_CAP; i++)
     if (!slotValid[i]) {
       outputBuffer[i] = result;
@@ -34,7 +34,7 @@ uint8_t AGU::headRobTag() const {
   }
   return best >= 0 ? outputBuffer[best].robTag : 0;
 }
-uint8_t AGU::headlsqIndex() const {
+uint8_t AGU::headMemIndex() const {
   int best = -1;
   for (int i = 0; i < AGU_CAP; i++) {
     if (slotValid[i] &&
@@ -42,7 +42,7 @@ uint8_t AGU::headlsqIndex() const {
          ROB::isOlder(outputBuffer[i].robTag, outputBuffer[best].robTag)))
       best = i;
   }
-  return best >= 0 ? outputBuffer[best].lsqIndex : 0;
+  return best >= 0 ? outputBuffer[best].memIndex : 0;
 }
 bool AGU::isFull() const {
   for (int i = 0; i < AGU_CAP; i++) {
@@ -80,11 +80,11 @@ void AGU::tick(const AGUInput &input, systemState &CPUstate) {
     if (input.dispatch.rsType == RSType::Load) {
       auto &rs = input.RSModule.loadRS[input.dispatch.rsIndex];
       CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op,
-                              input.dispatch.robTag, rs.lsqIndex);
+                              input.dispatch.robTag, rs.memIndex);
     } else {
       auto &rs = input.RSModule.storeAddressRS[input.dispatch.rsIndex];
       CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op,
-                              input.dispatch.robTag, rs.lsqIndex);
+                              input.dispatch.robTag, rs.memIndex);
     }
   }
   // AGU remove the first entry every cycle

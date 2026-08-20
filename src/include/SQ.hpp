@@ -1,0 +1,84 @@
+#pragma once
+#include "common.hpp"
+#include <cstdint>
+#include <cstring>
+struct systemState;
+struct AGU;
+struct RSUnit;
+struct ROB;
+struct DMEM;
+struct LQ;
+struct IssuePacket;
+struct SQEntry {
+  RobTag robTag;
+  uint32_t address;
+  int32_t value;
+  int n_bytes;
+  bool isAddressReady;
+  bool isValueReady;
+};
+struct SQInput {
+  SquashInfo squashDetect;
+  const AGU &AGUModule;
+  const RSUnit &RSModule;
+  const ROB &ROBModule;
+  const DMEM &DMEMModule;
+  const LQ &LQModule;
+  const IssuePacket &issuePacket;
+  MemDispatchDecision decision;
+  SQInput(const AGU &agu, const RSUnit &rs, const ROB &rob, const DMEM &dmem,
+          const LQ &lq, const IssuePacket &pkt)
+      : AGUModule(agu), RSModule(rs), ROBModule(rob), DMEMModule(dmem),
+        LQModule(lq), issuePacket(pkt) {}
+};
+
+struct StoreNotify{
+  bool valid = false;
+  uint8_t storeTag = 0;                  // 广播源 store 的 robTag
+  uint32_t addr = 0;                     // store 地址（已就绪）
+  int value = 0;                         // store 数据
+  bool foundKnownSame = false;           // 是否存在更年轻的同地址已知 store
+  uint8_t knownSameAddressOldestTag = 0; // 其中最老的 robTag
+  bool foundUnknown = false;             // 是否存在更年轻的未知地址 store
+  uint8_t unknownOldestTag = 0;          // 其中最老的 robTag
+};
+
+struct StoreResponse{
+  bool valid = false;
+  int value = 0;
+};
+
+class SQ {
+  friend struct ReorderTester;
+
+private:
+  SQEntry SQqueue[SQ_CAP];
+  uint8_t head = 0;
+  uint8_t tail = 0;
+
+public:
+  SQ() { std::memset(this, 0, sizeof(*this)); }
+  bool isEmpty() const;
+  bool isFull() const;
+  bool isActive(uint8_t index) const;
+  void pushStore(RobTag robTag, int n_bytes);
+  void pop();
+  uint8_t getHead() const;
+  uint8_t getTail() const;
+  bool isReadyToCommit(int index) const;
+  void writeAddress(uint32_t address, int index);
+  void writeValue(int32_t value, int index);
+  auto getAddress(int index) const -> uint32_t;
+  auto getValue(int index) const -> int32_t;
+  auto headRobTag() const -> uint8_t;
+  auto getRobTag(int index) const -> uint8_t;
+  auto getNBytes(int index) const -> int;
+  bool isAddressReady(int index) const { return SQqueue[index].isAddressReady; }
+  bool isValueReady(int index) const { return SQqueue[index].isValueReady; }
+  auto planDataForward(int index, int32_t value) const -> StoreNotify;
+  auto planAddressForward(int index, uint32_t address) const -> StoreNotify;
+  auto replyToLoadRequest(uint32_t addr, uint8_t loadTag) const -> StoreResponse;
+  bool replyToLoadDetect(uint32_t addr, RobTag loadTag) const; // true: can load, else cannot load
+  void flush(uint8_t tailSnapshot);
+  void tick(const SQInput &, systemState &);
+};

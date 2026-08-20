@@ -39,7 +39,6 @@ void PRF::push(int index) {
 bool PRF::isFreeListEmpty() const { return headSeq == tailSeq; }
 
 uint32_t PRF::getHeadSeq() const { return headSeq; }
-uint32_t PRF::getTailSeq() const { return tailSeq; }
 
 void PRF::restoreHead(uint32_t ckptHeadSeq) {
   assert(tailSeq - ckptHeadSeq <= PRF_CAP);
@@ -54,25 +53,25 @@ void PRF::write(int index, int32_t value) {
 }
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
-  auto head = input.LSQModule.getHead();
-  for (int k = 0; k < (LSQ_CAP >> 3); ++k) {
+  auto head = input.LQModule.getHead();
+  for (int k = 0; k < (LQ_CAP >> 3); ++k) {
     uint8_t i = (head + k) & 0x3F;
-    if (!input.LSQModule.isActive(i))
+    if (!input.LQModule.isActive(i))
       continue;
-    if (input.LSQModule.isReadyToCommit(i)) {
-      auto lsqTag = input.LSQModule.getRobTag(i);
+    if (input.LQModule.isReadyToCommit(i)) {
+      auto lqTag = input.LQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
-           ROB::isOlder(lsqTag, input.squashDetect.SquashTag))) {
+           ROB::isOlder(lqTag, input.squashDetect.SquashTag))) {
         if (!input.ROBModule.isEmpty() &&
-            !ROB::isOlder(lsqTag, input.ROBModule.getHead())) {
+            !ROB::isOlder(lqTag, input.ROBModule.getHead())) {
           int newPhy =
-              input.ROBModule.getNewPhy(input.ROBModule.getIndexByTag(lsqTag));
+              input.ROBModule.getNewPhy(input.ROBModule.getIndexByTag(lqTag));
           if (newPhy >= 0) {
-            CPUstate.PRFModule.write(newPhy, input.LSQModule.getValue(i));
+            CPUstate.PRFModule.write(newPhy, input.LQModule.getValue(i));
             if (debug::enabled(debug::TOPIC_PRF))
-              debug::print("PRF write P%d = %d (lsq)\n", newPhy,
-                           input.LSQModule.getValue(i));
+              debug::print("PRF write P%d = %d (lq)\n", newPhy,
+                           input.LQModule.getValue(i));
           }
         }
       }

@@ -258,6 +258,9 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   }
   p.robEntry = ROBEntry(ROBType::REGISTER);
   p.robEntry.dest = destination;
+  p.robEntry.pc = inst.pc;
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.oldPhy =
       inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
   p.robEntry.newPhy = p.phy;
@@ -330,6 +333,9 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
     }
   }
   p.robEntry = ROBEntry(ROBType::STORE);
+  p.robEntry.pc = inst.pc;
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.storeAddrRS.robTag = p.robTag;
   p.storeValueRS.robTag = p.robTag;

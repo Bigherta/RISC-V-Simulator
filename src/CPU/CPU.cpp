@@ -136,6 +136,10 @@ void CPU::run() {
                      ? 100.0 * CPUstate.BPModule.getBranchCorrect() /
                            CPUstate.BPModule.getBranchTotal()
                      : 0.0);
+  if (debug::enabled(debug::TOPIC_MDP))
+    debug::print("mdp: violations=%llu speculative=%llu\n",
+                 CPUstate.flushArbiter.getLoadViolations(),
+                 CPUstate.DMEMModule.getSpeculativeLoads());
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &

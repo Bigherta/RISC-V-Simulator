@@ -57,12 +57,15 @@ public:
   bool isReadyToCommit(int index) const;
   void writeAddress(uint32_t address, int index);
   void writeValue(int32_t value, int index);
+  void writeValueIfFetching(uint8_t robTag, int index, int32_t value);
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;
   auto headRobTag() const -> uint8_t;
   auto getRobTag(int index) const -> uint8_t;
   auto getIsUnsigned(int index) const -> bool;
   auto getNBytes(int index) const -> int;
+  bool isAddressReady(int index) const { return LQqueue[index].isAddressReady; }
+  ValueState getValueState(int index) const { return LQqueue[index].valueState; }
   void setValueState(int index, ValueState state);
   void setCDBBroadcast(int index);
   auto getIsCDBBroadcast(int index) const -> bool;

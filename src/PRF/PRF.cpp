@@ -53,12 +53,15 @@ void PRF::write(int index, int32_t value) {
 }
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
+  // LQ load 值写回 — commit 守卫同 ROB：越过未解析地址旧 store 的 load 值不落 PRF
   auto head = input.LQModule.getHead();
-  for (int k = 0; k < (LQ_CAP >> 3); ++k) {
-    uint8_t i = (head + k) & 0x3F;
+  for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
+    uint8_t i = (head + k) & 0x0F;
     if (!input.LQModule.isActive(i))
       continue;
-    if (input.LQModule.isReadyToCommit(i)) {
+    if (input.LQModule.isReadyToCommit(i) &&
+        !input.SQModule.hasOlderUnresolvedAddressStore(
+            input.LQModule.getRobTag(i))) {
       auto lqTag = input.LQModule.getRobTag(i);
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&

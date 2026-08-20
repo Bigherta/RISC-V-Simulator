@@ -78,7 +78,10 @@ public:
   auto planDataForward(int index, int32_t value) const -> StoreNotify;
   auto planAddressForward(int index, uint32_t address) const -> StoreNotify;
   auto replyToLoadRequest(uint32_t addr, uint8_t loadTag) const -> StoreResponse;
-  bool replyToLoadDetect(uint32_t addr, RobTag loadTag) const; // true: can load, else cannot load
+  // 投机派发门控：true=可派发（仅挡已知同址旧 store；未知址旧 store 一律放行=naive）
+  bool canDispatchLoad(uint32_t addr, RobTag loadTag) const;
+  // commit 守卫：是否存在比 loadTag 更老的未解析地址 store
+  bool hasOlderUnresolvedAddressStore(RobTag loadTag) const;
   void flush(uint8_t tailSnapshot);
   void tick(const SQInput &, systemState &);
 };

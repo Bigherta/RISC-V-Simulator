@@ -13,9 +13,10 @@ struct PRFInput {
   SquashInfo squashDetect;
   CDBOutput cdbOut;
   const LQ &LQModule;
+  const SQ &SQModule;
   const ROB &ROBModule;
-  PRFInput(const LQ &lq, const ROB &rob, const IssuePacket &pkt)
-      : LQModule(lq), ROBModule(rob), issuePacket(pkt) {}
+  PRFInput(const LQ &lq, const SQ &sq, const ROB &rob, const IssuePacket &pkt)
+      : LQModule(lq), SQModule(sq), ROBModule(rob), issuePacket(pkt) {}
 };
 struct systemState;
 class PRF {

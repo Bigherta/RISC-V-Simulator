@@ -6,15 +6,15 @@
 
 bool LQ::isEmpty() const { return tail == head; }
 
-bool LQ::isFull() const { return ((tail + 1) & 0x3F) == head; }
+bool LQ::isFull() const { return ((tail + 1) & 0x0F) == head; }
 
 bool LQ::isActive(uint8_t index) const {
   if (head == tail)
     return false;
-  return ((index - head + LQ_CAP) & 0x3F) < ((tail - head + LQ_CAP) & 0x3F);
+  return ((index - head + LQ_CAP) & 0x0F) < ((tail - head + LQ_CAP) & 0x0F);
 }
 
-void LQ::pop() { head = (head + 1) & 0x3F; }
+void LQ::pop() { head = (head + 1) & 0x0F; }
 
 void LQ::pushLoad(RobTag robTag, int n_bytes, bool isUnsigned) {
   LQqueue[tail] = {};
@@ -23,7 +23,7 @@ void LQ::pushLoad(RobTag robTag, int n_bytes, bool isUnsigned) {
   LQqueue[tail].isUnsigned = isUnsigned;
   LQqueue[tail].isAddressReady = false;
   LQqueue[tail].valueState = ValueState::NOTREADY;
-  tail = (tail + 1) & 0x3F;
+  tail = (tail + 1) & 0x0F;
 }
 
 uint8_t LQ::getHead() const { return head; }
@@ -40,6 +40,14 @@ void LQ::writeValue(int32_t value, int index) {
   LQqueue[index].value = value;
   LQqueue[index].valueState = ValueState::READY;
   LQqueue[index].isCDBBroadcast = false;
+}
+
+void LQ::writeValueIfFetching(uint8_t robTag, int index, int32_t value) {
+  if (LQqueue[index].robTag != robTag)
+    return;
+  if (LQqueue[index].valueState != ValueState::FETCHING)
+    return;
+  writeValue(value, index);
 }
 
 void LQ::setValueState(int index, ValueState state) {
@@ -80,7 +88,7 @@ int LQ::LoadDetect() const {
   int UnloadIndex = 0;
   bool foundUnload = false;
   for (int k = 0; k < LQ_CAP; k++) {
-    uint8_t cur = (head + k) & 0x3F;
+    uint8_t cur = (head + k) & 0x0F;
     if (!isActive(cur) || foundUnload)
       continue;
     if (LQqueue[cur].isAddressReady &&
@@ -98,7 +106,7 @@ int LQ::CDBDetect() const {
   bool found = false;
   int detectedIndex = 0xFFFFFFFF;
   for (int k = 0; k < LQ_CAP; ++k) {
-    uint8_t cur = (head + k) & 0x3F;
+    uint8_t cur = (head + k) & 0x0F;
     if (!isActive(cur) || found)
       continue;
     if (LQqueue[cur].isAddressReady &&
@@ -121,7 +129,7 @@ bool LQ::isReadyToCommit(int index) const {
 
 void LQ::applyStoreForward(const StoreNotify &notify) {
   for (int k = 0; k < LQ_CAP; ++k) {
-    uint8_t i = (head + k) & 0x3F;
+    uint8_t i = (head + k) & 0x0F;
     if (!isActive(i))
       break;
     if (!LQqueue[i].isAddressReady)
@@ -183,8 +191,9 @@ void LQ::tick(const LQInput &input, systemState &CPUstate) {
     CPUstate.LQModule.pop();
   // load response from DMEM
   if (input.loadResp.valid)
-    CPUstate.LQModule.writeValue(input.loadResp.value,
-                                 memSlot(input.loadResp.memIndex));
+    CPUstate.LQModule.writeValueIfFetching(input.loadResp.robTag,
+                                           memSlot(input.loadResp.memIndex),
+                                           input.loadResp.value);
   // CDB consume
   if (input.cdbBus.lsqSetCDB)
     CPUstate.LQModule.setCDBBroadcast(memSlot(input.cdbBus.memIndex));

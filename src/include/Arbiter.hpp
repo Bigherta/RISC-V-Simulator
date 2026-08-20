@@ -3,12 +3,12 @@
 #include "ALU.hpp"
 #include "BRU.hpp"
 #include "Decoder.hpp"
-#include "SQ.hpp"
 #include "LQ.hpp"
 #include "PRF.hpp"
 #include "RAT.hpp"
 #include "ROB.hpp"
 #include "RS.hpp"
+#include "SQ.hpp"
 #include "common.hpp"
 #include <cstdint>
 struct FlushRequest {
@@ -27,22 +27,28 @@ class ROB;
 
 // FlushArbiter owns its queue and the whole squash flow: 段1 consumes the
 // accepted squash (clear), 段2 detects BRU branch mispredicts, 段3 detects
-// CDB JALR mispredicts -- all reads from the snapshots (BRUModule head,
-// cdbOut, ROBModule), all writes to its own queue (receive). The BRU/CDB
-// producers' writeBack parts (remove / setROBCommitReady) stay in their own
-// ticks.
+// CDB JALR mispredicts, 段4 detects MDP load violations (store address
+// resolves against younger executed loads) -- all reads from the snapshots
+// (BRUModule head, cdbOut, ROBModule, AGUModule head store, LQModule/SQModule),
+// all writes to its own queue (receive).
 struct FlushArbiterInput {
   const BRU &BRUModule;
   const ROB &ROBModule;
+  const AGU &AGUModule;
+  const LQ &LQModule;
+  const SQ &SQModule;
   CDBOutput cdbOut;
   SquashInfo squashDetect;
-  FlushArbiterInput(const BRU &bru, const ROB &rob)
-      : BRUModule(bru), ROBModule(rob) {}
+  FlushArbiterInput(const BRU &bru, const ROB &rob, const AGU &agu,
+                    const LQ &lq, const SQ &sq)
+      : BRUModule(bru), ROBModule(rob), AGUModule(agu), LQModule(lq),
+        SQModule(sq) {}
 };
 
 class FlushArbiter {
 private:
   FlushRequest requests[FLUSHARBITER_CAP];
+  uint64_t loadViolations = 0;  // naive 投机 load violation 计数（诊断统计）
 
 public:
   FlushArbiter();
@@ -50,6 +56,7 @@ public:
   SquashInfo arbitResult() const;
   void clear(uint8_t tag);
   FlushRequest getRequest(int i) const;
+  uint64_t getLoadViolations() const { return loadViolations; }
   void tick(const FlushArbiterInput &, systemState &);
 };
 

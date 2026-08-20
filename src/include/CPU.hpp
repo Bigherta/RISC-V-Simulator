@@ -78,9 +78,10 @@ private:
                   issuePacket};
   RSInput rsInput{ROBModule, issuePacket};
   ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
-  PRFInput prfInput{LQModule, ROBModule, issuePacket};
+  PRFInput prfInput{LQModule, SQModule, ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};
-  FlushArbiterInput flarbInput{BRUModule, ROBModule};
+  FlushArbiterInput flarbInput{BRUModule, ROBModule, AGUModule, LQModule,
+                               SQModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
                                RATModule,        PRFModule, LQModule,
                                SQModule};

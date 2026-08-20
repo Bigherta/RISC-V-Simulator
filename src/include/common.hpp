@@ -7,10 +7,10 @@ constexpr int INTEGERRS_CAP = 16;
 constexpr int STORERS_CAP = 8;
 constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
-constexpr int LSQ_CAP = 64;
-constexpr int LQ_CAP = 64;
-constexpr int SQ_CAP = 64;
-constexpr uint8_t MEM_STORE_BIT = 0x40;  // memIndex 类型位: 0=load(LQ), 1=store(SQ)
+constexpr int LQ_CAP = 16;
+constexpr int SQ_CAP = 16;
+constexpr int MEMQ_SCAN_WINDOW = 8; 
+constexpr uint8_t MEM_STORE_BIT = 0x40; 
 inline bool isStoreMem(uint8_t m) { return (m & MEM_STORE_BIT) != 0; }
 inline uint8_t memSlot(uint8_t m) { return m & 0x3F; }
 constexpr int ROB_CAP = 64;
@@ -37,6 +37,8 @@ enum class ValueState {
   FETCHING,
   READY,
 };
+
+enum class SquashKind : uint8_t { None, Branch, LoadViolation, CacheMiss };
 enum class Operation {
   ADD,
   SUB,
@@ -100,6 +102,7 @@ struct MemRequest {
   int n_bytes;
   uint8_t robTag;
   uint8_t memIndex;
+  bool speculative = false;
 };
 
 struct MemDispatchDecision {
@@ -109,6 +112,7 @@ struct MemDispatchDecision {
 
 struct SquashInfo {
   bool needSquash = false;
+  SquashKind kind = SquashKind::None;
   int SquashIndex = -1;
   uint8_t SquashTag = 0;
   uint32_t SquashPC = 0;
@@ -131,7 +135,7 @@ struct CDBBypassResult {
 struct PredictInfo {
   bool taken;
   int32_t predictPC;
-  bool btbHit = false;       // BTB 命中（分支类型信息来自 BTB）
+  bool btbHit = false;      
   bool unconditional = false;
   bool isCall = false;       // JAL rd==1
   bool isRet = false;        // JALR x0, 0(x1)
@@ -217,8 +221,6 @@ struct FetchDecision {
   bool shift = false;
   bool shiftValue = false;
   uint8_t ckptId = 0;
-  // read() 边组合求值：取指条件（squash/halt/FQ 满/窗口满）+ predict（快照
-  // BP）+ 预测拍快照（定义见 BranchPredictor.cpp）。
   static FetchDecision build(const BranchPredictor &bp, uint32_t pc,
                              const SquashInfo &squash, bool haltFetched,
                              bool fqFull, bool imemReqFull);
@@ -226,6 +228,7 @@ struct FetchDecision {
 struct LoadResponse {
   bool valid = false;
   uint8_t memIndex = 0;
+  uint8_t robTag = 0;
   int32_t value = 0;
 };
 #endif // COMMON_HPP

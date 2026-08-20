@@ -76,6 +76,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
           debug::print("squash tag=%u pc=%u (from %u)\n", brRobTag, actualPC,
                        pcFrom);
         BranchSquash.needSquash = true;
+        BranchSquash.kind = SquashKind::Branch;
         BranchSquash.SquashPC = actualPC;
         BranchSquash.SquashIndex = input.ROBModule.getIndexByTag(brRobTag);
         BranchSquash.SquashTag = brRobTag;
@@ -104,6 +105,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
             debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.result.robTag,
                          pc);
           JumpSquash.needSquash = true;
+          JumpSquash.kind = SquashKind::Branch;
           JumpSquash.SquashPC = pc;
           JumpSquash.SquashIndex =
               input.ROBModule.getIndexByTag(cdbOut.result.robTag);
@@ -112,6 +114,47 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
+      }
+    }
+  }
+  
+
+  if (!input.AGUModule.isEmpty() && isStoreMem(input.AGUModule.headMemIndex())) {
+    auto aguRobTag = input.AGUModule.headRobTag();
+    if (!input.squashDetect.needSquash ||
+        (input.squashDetect.needSquash &&
+         ROB::isOlder(aguRobTag, input.squashDetect.SquashTag))) {
+      auto storeAddr = static_cast<uint32_t>(input.AGUModule.headValue());
+      auto lqHead = input.LQModule.getHead();
+      bool violationHandled = false;
+      for (int k = 0; k < LQ_CAP; ++k) {
+        uint8_t i = (lqHead + k) & 0x0F;
+        if (violationHandled)
+          continue;  
+        if (!input.LQModule.isActive(i))
+          continue;
+        if (input.LQModule.isAddressReady(i) &&
+            input.LQModule.getAddress(i) == storeAddr &&
+            (input.LQModule.getValueState(i) == ValueState::READY ||
+             input.LQModule.getValueState(i) == ValueState::FETCHING) &&
+            ROB::isYounger(input.LQModule.getRobTag(i), aguRobTag)) {
+          auto violTag = input.LQModule.getRobTag(i);
+          if ((!input.squashDetect.needSquash ||
+               ROB::isOlder(violTag, input.squashDetect.SquashTag)) &&
+              !input.ROBModule.isEmpty() &&
+              !ROB::isOlder(violTag, input.ROBModule.getHead())) {
+            SquashInfo viol;
+            viol.needSquash = true;
+            viol.kind = SquashKind::LoadViolation;
+            viol.SquashIndex = input.ROBModule.getIndexByTag(violTag);
+            viol.SquashTag = violTag;
+            viol.SquashPC = input.ROBModule.getPC(viol.SquashIndex);
+            viol.CkptId = input.ROBModule.getCkptId(viol.SquashIndex);
+            CPUstate.flushArbiter.receive(viol);
+            ++CPUstate.flushArbiter.loadViolations;
+            violationHandled = true;
+          }
+        }
       }
     }
   }
@@ -328,7 +371,8 @@ MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
   if (loadIndex != 0xFFFFFFFF && !dmem.isBusy()) {
     auto loadAddr = LQ.getAddress(loadIndex);
     auto loadTag = LQ.getRobTag(loadIndex);
-    if (SQ.replyToLoadDetect(loadAddr, loadTag)) {
+    bool speculative = SQ.hasOlderUnresolvedAddressStore(loadTag);
+    if (SQ.canDispatchLoad(loadAddr, loadTag)) {
       MemRequest newRequest{};
       newRequest.address = LQ.getAddress(loadIndex);
       newRequest.isSigned = !LQ.getIsUnsigned(loadIndex);
@@ -336,6 +380,7 @@ MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
       newRequest.op = Operation::Load;
       newRequest.robTag = LQ.getRobTag(loadIndex);
       newRequest.memIndex = static_cast<uint8_t>(loadIndex);
+      newRequest.speculative = speculative;
       if (!squash.needSquash ||
           (squash.needSquash &&
            ROB::isOlder(newRequest.robTag, squash.SquashTag))) {

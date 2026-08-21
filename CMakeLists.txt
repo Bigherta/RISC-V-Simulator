@@ -20,7 +20,7 @@ set(CPU_SOURCES
     src/SQ/SQ.cpp
     src/RAT/RAT.cpp
     src/FetchQueue/FetchQueue.cpp
-    src/BranchPredictor/BranchPredictor.cpp
+    src/BPU/BPU.cpp
     src/PRF/PRF.cpp
 )
 

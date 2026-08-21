@@ -21,14 +21,14 @@ void CPU::comb() {
   memcpy(&DecodeUnitModule, &CPUstate.DecodeUnitModule,
          sizeof(DecodeUnitModule));
   memcpy(&PRFModule, &CPUstate.PRFModule, sizeof(PRFModule));
-  memcpy(&BPModule, &CPUstate.BPModule, sizeof(BPModule));
+  memcpy(&BPUModule, &CPUstate.BPUModule, sizeof(BPUModule));
   IMEMModule.snapshotFrom(CPUstate.IMEMModule);
   memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
   DMEMModule.snapshotFrom(CPUstate.DMEMModule);
   squashDetect = CPUstate.flushArbiter.arbitResult();
   imemInput.squashDetect = squashDetect;
   fetchDecision = FetchDecision::build(
-      BPModule, IMEMModule.getPC(), squashDetect, IMEMModule.isHaltFetched(),
+      BPUModule, IMEMModule.getPC(), squashDetect, IMEMModule.isHaltFetched(),
       FQModule.isFull(), IMEMModule.isRequestFull());
   imemInput.fetchDecision = fetchDecision;
   fqInput.squashDetect = squashDetect;
@@ -116,7 +116,7 @@ void CPU::run() {
     ALUModule.tick(aluInput, CPUstate);
     AGUModule.tick(aguInput, CPUstate);
     BRUModule.tick(bruInput, CPUstate);
-    BPModule.tick(bpInput, CPUstate);
+    BPUModule.tick(bpInput, CPUstate);
     DMEMModule.tick(dmemInput, CPUstate);
     RSModule.tick(rsInput, CPUstate);
     RATModule.tick(ratInput, CPUstate);
@@ -130,11 +130,11 @@ void CPU::run() {
     debug::print("clock: %llu\n", clock);
   if (debug::enabled(debug::TOPIC_BRANCH))
     debug::print("branch: %llu/%llu correct (%.2f%%)\n",
-                 CPUstate.BPModule.getBranchCorrect(),
-                 CPUstate.BPModule.getBranchTotal(),
-                 CPUstate.BPModule.getBranchTotal()
-                     ? 100.0 * CPUstate.BPModule.getBranchCorrect() /
-                           CPUstate.BPModule.getBranchTotal()
+                 CPUstate.BPUModule.getBranchCorrect(),
+                 CPUstate.BPUModule.getBranchTotal(),
+                 CPUstate.BPUModule.getBranchTotal()
+                     ? 100.0 * CPUstate.BPUModule.getBranchCorrect() /
+                           CPUstate.BPUModule.getBranchTotal()
                      : 0.0);
   if (debug::enabled(debug::TOPIC_MDP))
     debug::print("mdp: violations=%llu speculative=%llu\n",

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 
-static constexpr uint32_t MEM_SIZE = 256 * 1024;
+static constexpr uint32_t MEM_SIZE = 128 * 1024;
 
 // Base class shared by IMEM (instruction memory) and DMEM (data memory).
 // It owns only the byte-addressable storage array and the functions that

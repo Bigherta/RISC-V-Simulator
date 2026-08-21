@@ -22,16 +22,18 @@ constexpr int ALU_CAP = 4;
 constexpr int AGU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int PC_Direct_CAP = 1 << 12;
+constexpr int BTB_CAP = 512;
 constexpr int SELECTOR_CAP = 1 << 12;
 constexpr int HISTORY_BIT = 12;
 constexpr int HISTORY_MASK = (1 << HISTORY_BIT) - 1;
 constexpr int LHT_CAP = 1 << 12;
 constexpr int LOCAL_HISTORY_BIT = 8;
 constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
-constexpr int RAS_CAP = 128;
+constexpr int RAS_CAP = 16;
+constexpr int ALIGNQ_CAP = 16;  // SARAS: AlignQueue (correction queue) ring capacity
 constexpr int PRF_CAP = 128;
 constexpr int IMEM_CAP = 4;
-constexpr int CKPT_CAP = 128;
+constexpr int CKPT_CAP = 64;
 enum class ValueState {
   NOTREADY,
   FETCHING,
@@ -150,10 +152,15 @@ struct BTBEntry {
   bool isRet = false;
 };
 
-struct BranchPredictorSnapshot {
-  int top_snapshot;
-  uint32_t RAS_snapshot[RAS_CAP];
+struct BPUSnapshot {
+  // SARAS: the checkpoint keeps GHR, AlignQueue head+tail, and RAS_top.
+  // With RASEntry{retPC,times} the height != call/ret depth, so RAS_top
+  // is checkpointed directly. All three are uint8_t — ring counters wrap
+  // at 256 (16× RAS_CAP/ALIGNQ_CAP, safe for in-flight <64).
   uint16_t GHR_snapshot;
+  uint8_t alignHead;
+  uint8_t alignTail;
+  uint8_t RAS_top;
 };
 
 struct RATSnapshot {
@@ -211,7 +218,7 @@ struct CDBBus {
   static CDBBus build(const CDBOutput &cdbOut, const ROB &ROBModule,
                       const PRF &PRFModule, const SquashInfo &squashDetect);
 };
-struct BranchPredictor;
+struct BPU;
 struct FetchDecision {
   bool valid = false;
   uint32_t pc = 0;
@@ -221,7 +228,7 @@ struct FetchDecision {
   bool shift = false;
   bool shiftValue = false;
   uint8_t ckptId = 0;
-  static FetchDecision build(const BranchPredictor &bp, uint32_t pc,
+  static FetchDecision build(const BPU &bp, uint32_t pc,
                              const SquashInfo &squash, bool haltFetched,
                              bool fqFull, bool imemReqFull);
 };

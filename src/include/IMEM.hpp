@@ -1,5 +1,5 @@
 #pragma once
-#include "BranchPredictor.hpp"
+#include "BPU.hpp"
 #include "Memory.hpp"
 #include "FetchQueue.hpp"
 #include "common.hpp"

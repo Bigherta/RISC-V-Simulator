@@ -6,7 +6,7 @@
 #include "IssueArbiter.hpp"
 #include "Arbiter.hpp"
 #include "BRU.hpp"
-#include "BranchPredictor.hpp"
+#include "BPU.hpp"
 #include "DMEM.hpp"
 #include "Decoder.hpp"
 #include "FetchQueue.hpp"
@@ -36,7 +36,7 @@ struct systemState {
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
-  BranchPredictor BPModule;
+  BPU BPUModule;
   FlushArbiter flushArbiter;
 
   systemState() = default;
@@ -62,7 +62,7 @@ private:
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
-  BranchPredictor BPModule;
+  BPU BPUModule;
   FlushArbiter flushArbiter;
   CDBOutput cdbOut;
   IssuePacket issuePacket;

@@ -114,7 +114,8 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       CPUstate.ROBModule.setROBCommitReady(getIndexByTag(brRobTag));
     }
   }
-  // LQ set ROB ready (loads) — commit 守卫：READY load 不得越过未解析地址的旧 store
+  // LQ set ROB ready (loads) - commit guard: a READY load must not cross an
+  // older store with unresolved address
   auto lqHead = input.LQModule.getHead();
   for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
     uint8_t i = (lqHead + k) & 0x0F;

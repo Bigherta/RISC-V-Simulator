@@ -1,33 +1,33 @@
 #pragma once
-#include <cstdint>
-#include "common.hpp"
 #include "RS.hpp"
+#include "common.hpp"
+#include <cstdint>
 struct systemState;
 struct BRUInput {
   SquashInfo squashDetect;
   const ROB &ROBModule;
   const RSUnit &RSModule;
-  DispatchInfo dispatch;                
-  BRUInput(const ROB &rob, const RSUnit &rs)
-      : ROBModule(rob), RSModule(rs) {}
+  DispatchInfo dispatch;
+  BRUInput(const ROB &rob, const RSUnit &rs) : ROBModule(rob), RSModule(rs) {}
 };
 class BRU {
   friend struct ReorderTester;
+
 private:
   BranchResult outputBuffer[BRU_CAP];
   bool slotValid[BRU_CAP] = {};
-
-public:
-  bool isFull() const;
-  bool isEmpty() const;
   void BRUExecute(int32_t op1, int32_t op2, int32_t pc, int32_t imm,
                   Operation op, RobTag robTag);
   void push(BranchResult);
   void remove(uint8_t robTag);
   void flush(uint8_t tag);
+
+public:
+  bool isFull() const;
+  bool isEmpty() const;
   int32_t headPCFrom() const;
   int32_t headPCResult() const;
   uint8_t headRobTag() const;
   bool isValid(int index) const { return slotValid[index]; }
-  void tick(const BRUInput&, systemState&);
+  void tick(const BRUInput &, systemState &);
 };

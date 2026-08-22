@@ -17,13 +17,13 @@ class ALU {
 private:
   ArithmeticCalculateResult outputBuffer[ALU_CAP];
   bool slotValid[ALU_CAP] = {};
-public:
-  bool isFull() const;
-  bool isEmpty() const;
   void push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
                 bool isControl);
   void remove(uint8_t robTag);
   void flush(uint8_t tag);
+public:
+  bool isFull() const;
+  bool isEmpty() const;
   int32_t headValue() const;
   uint8_t headRobTag() const;
   bool headIsControl() const;

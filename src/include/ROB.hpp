@@ -35,8 +35,7 @@ struct ROBInput {
   const LQ &LQModule;
   const SQ &SQModule;
   const IssuePacket &issuePacket;
-  ROBInput(const BRU &bru, const LQ &lq, const SQ &sq,
-          const IssuePacket &pkt)
+  ROBInput(const BRU &bru, const LQ &lq, const SQ &sq, const IssuePacket &pkt)
       : BRUModule(bru), LQModule(lq), SQModule(sq), issuePacket(pkt) {}
 };
 class ROB {
@@ -48,9 +47,13 @@ private:
   uint8_t next_tag = 0;
   bool haltCommitted = false;
   int haltRd = -1;
+  void updateNextTag();
+  int push(ROBEntry entry);
+  void pop();
+  void setROBCommitReady(int index);
+  void flush(int squashIndex);
 
 public:
-  using RobTag = ::RobTag;
   static bool isOlder(RobTag tag_a, RobTag tag_b);
   static bool isYounger(RobTag tag_a, RobTag tag_b);
   static int idx(RobTag t);
@@ -64,9 +67,6 @@ public:
   ROBType headType() const;
   int headDest() const;
   uint8_t getNextTag() const;
-  void updateNextTag();
-  int push(ROBEntry entry);
-  void pop();
   int getHead() const;
   uint8_t getTag(int index) const;
   bool isCommitReadyAt(int index) const;
@@ -82,7 +82,5 @@ public:
   int getOldPhy(int index) const;
   bool isCall(int index) const;
   bool isRet(int index) const;
-  void setROBCommitReady(int index);
-  void flush(int squashIndex);
   void tick(const ROBInput &, systemState &);
 };

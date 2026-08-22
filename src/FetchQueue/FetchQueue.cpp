@@ -61,12 +61,12 @@ void FetchQueue::tick(const FQInput&input, systemState & CPUstate){
     CPUstate.FQModule.clear(); 
     return;
   }
-  if (input.IMEMModule.isReturnReady()) {
+  if (input.ICacheModule.isReturnReady()) {
     if (!input.haltFetched && !isFull()) {
-      uint32_t raw = input.IMEMModule.returnRaw();
-      int32_t pc = input.IMEMModule.returnPC();
-      int32_t predPC = input.IMEMModule.returnPredictPC();
-      CPUstate.FQModule.push(raw, pc, predPC, input.IMEMModule.returnCkptId());
+      uint32_t raw = input.ICacheModule.returnRaw();
+      int32_t pc = input.ICacheModule.returnPC();
+      int32_t predPC = input.ICacheModule.returnPredictPC();
+      CPUstate.FQModule.push(raw, pc, predPC, input.ICacheModule.returnCkptId());
     }
   }
   if (!isEmpty() && !input.DecodeUnitModule.isFull())

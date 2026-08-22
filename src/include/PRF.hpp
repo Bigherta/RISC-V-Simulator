@@ -28,22 +28,22 @@ private:
   uint32_t PRFHeadCkpt[CKPT_CAP];
   uint32_t headSeq = 0;
   uint32_t tailSeq = 0;
+  uint8_t pop();
+  void push(int index);
+  void restoreHead(uint32_t ckptHeadSeq);
+  void write(int index, int32_t value);
 
 public:
   PRF();
-  uint8_t pop();
-  void push(int index);
   bool isFreeListEmpty() const;
   uint32_t getHeadSeq() const;
   uint8_t getFreeListSlot(uint32_t seq) const {
     return freeList[seq & (PRF_CAP - 1)];
   }
-  void restoreHead(uint32_t ckptHeadSeq);
   bool isReady(int index) const;
   int32_t getValue(int index) const;
-  void write(int index, int32_t value);
   uint32_t head() const { return headSeq & (PRF_CAP - 1); }
   uint32_t tail() const { return tailSeq & (PRF_CAP - 1); }
   uint32_t size() const { return tailSeq - headSeq; }
-  void tick(const PRFInput&, systemState&);
+  void tick(const PRFInput &, systemState &);
 };

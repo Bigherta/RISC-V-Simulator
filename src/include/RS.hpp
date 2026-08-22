@@ -49,7 +49,7 @@ struct IssuePacket;
 struct systemState;
 struct RSInput {
   SquashInfo squashDetect;
-  const ROB &ROBModule;        
+  const ROB &ROBModule;
   DispatchBus dispatchBus;
   CDBBus cdbBus;
   const IssuePacket &issuePacket;
@@ -57,8 +57,11 @@ struct RSInput {
       : ROBModule(rob), issuePacket(pkt) {}
 };
 class RSUnit {
+private:
   friend struct ReorderTester;
-public:                           
+  void broadcast(const RSInput &, systemState &, RobTag robTag, int value);
+
+public:
   ReservationStation integerRS[INTEGERRS_CAP];
   LoadAddressRS loadRS[LOADRS_CAP];
   StoreAddressRS storeAddressRS[STORERS_CAP];
@@ -69,7 +72,6 @@ public:
   int tryAllocStoreAddress() const;
   int tryAllocStoreValue() const;
   int tryAllocBranch() const;
-  void broadcast(const RSInput&, systemState&, RobTag robTag, int value);
-  void tick(const RSInput&, systemState&);  
+  void tick(const RSInput &, systemState &);
 };
 #endif // RS_HPP

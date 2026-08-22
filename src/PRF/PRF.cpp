@@ -53,7 +53,8 @@ void PRF::write(int index, int32_t value) {
 }
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
-  // LQ load 值写回 — commit 守卫同 ROB：越过未解析地址旧 store 的 load 值不落 PRF
+  // LQ load value write-back - same commit guard as ROB: a load that crossed
+  // an unresolved-address older store must not write its value into the PRF
   auto head = input.LQModule.getHead();
   for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
     uint8_t i = (head + k) & 0x0F;

@@ -1,7 +1,7 @@
 #pragma once
-#include <cstring>
 #include "common.hpp"
 #include <cstdint>
+#include <cstring>
 struct BRU;
 struct ROB;
 struct systemState;
@@ -30,7 +30,7 @@ struct AlignEntry {
   uint32_t times;
 };
 
-struct RASEntry{
+struct RASEntry {
   uint32_t retPC;
   uint32_t times;
 };
@@ -55,17 +55,20 @@ private:
   // SARAS: ring return-address stack (RAS) with per-entry recursion
   // counter (times) + correction queue (AlignQueue). All three ring
   // counters are uint8_t and wrap at 256 (safe: in-flight <64, and
-  // ALIGNQ_CAP/RAS_CAP=16).
+  // ALIGNQ_CAP=32/RAS_CAP=16).
   RASEntry RAS[RAS_CAP] = {};
-  uint8_t RAS_top = 0;              // ring write pointer (wraps at 256)
+  uint8_t RAS_top = 0; // ring write pointer (wraps at 256)
   AlignEntry alignQueue[ALIGNQ_CAP] = {};
-  uint8_t alignHead = 0;            // AlignQueue head (advanced at commit)
-  uint8_t alignTail = 0;            // AlignQueue tail (appended on CALL-dedup / RET)
+  uint8_t alignHead = 0; // AlignQueue head (advanced at commit)
+  uint8_t alignTail = 0; // AlignQueue tail (appended on CALL-dedup / RET)
   uint16_t GHR = 0;
   BPUSnapshot bpCkpt[CKPT_CAP] = {};
   uint8_t nextCkptId = 0;
   uint64_t branchTotal = 0;
   uint64_t branchCorrect = 0;
+  void update(int32_t pc, bool taken, int32_t target, uint16_t ghr);
+  void updateJump(int32_t pc, int32_t target, bool isCall, bool isRet);
+  void shiftGHR(bool taken);
 
 public:
   BPU() {
@@ -76,9 +79,7 @@ public:
   uint64_t getBranchTotal() const { return branchTotal; }
   uint64_t getBranchCorrect() const { return branchCorrect; }
   PredictInfo predict(int32_t pc) const;
-  void update(int32_t pc, bool taken, int32_t target, uint16_t ghr);
-  void updateJump(int32_t pc, int32_t target, bool isCall, bool isRet);
-  void shiftGHR(bool taken);
+
   BPUSnapshot snapshotCheckPoint() const;
   void recoverCheckPoint(const BPUSnapshot &);
   uint8_t getNextCkptId() const { return nextCkptId; }

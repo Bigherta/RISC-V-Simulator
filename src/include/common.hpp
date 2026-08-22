@@ -9,8 +9,8 @@ constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
 constexpr int LQ_CAP = 16;
 constexpr int SQ_CAP = 16;
-constexpr int MEMQ_SCAN_WINDOW = 8; 
-constexpr uint8_t MEM_STORE_BIT = 0x40; 
+constexpr int MEMQ_SCAN_WINDOW = 8;
+constexpr uint8_t MEM_STORE_BIT = 0x40;
 inline bool isStoreMem(uint8_t m) { return (m & MEM_STORE_BIT) != 0; }
 inline uint8_t memSlot(uint8_t m) { return m & 0x3F; }
 constexpr int ROB_CAP = 64;
@@ -30,17 +30,20 @@ constexpr int LHT_CAP = 1 << 12;
 constexpr int LOCAL_HISTORY_BIT = 8;
 constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 16;
-constexpr int ALIGNQ_CAP = 16;  // SARAS: AlignQueue (correction queue) ring capacity
+constexpr int ALIGNQ_CAP = 32;
 constexpr int PRF_CAP = 128;
-constexpr int IMEM_CAP = 4;
+constexpr int IMEM_CAP = 16;
 constexpr int CKPT_CAP = 64;
+constexpr int CACHE_BLOCK_CAP = 16;
+constexpr int CACHE_CAP = 1024;
+constexpr int REQUEST_CAP = 4;
 enum class ValueState {
   NOTREADY,
   FETCHING,
   READY,
 };
 
-enum class SquashKind : uint8_t { None, Branch, LoadViolation, CacheMiss };
+enum class SquashKind : uint8_t { None, Branch, LoadViolation };
 enum class Operation {
   ADD,
   SUB,
@@ -104,7 +107,6 @@ struct MemRequest {
   int n_bytes;
   uint8_t robTag;
   uint8_t memIndex;
-  bool speculative = false;
 };
 
 struct MemDispatchDecision {
@@ -137,10 +139,10 @@ struct CDBBypassResult {
 struct PredictInfo {
   bool taken;
   int32_t predictPC;
-  bool btbHit = false;      
+  bool btbHit = false;
   bool unconditional = false;
-  bool isCall = false;       // JAL rd==1
-  bool isRet = false;        // JALR x0, 0(x1)
+  bool isCall = false; // JAL rd==1
+  bool isRet = false;  // JALR x0, 0(x1)
 };
 
 struct BTBEntry {
@@ -156,7 +158,7 @@ struct BPUSnapshot {
   // SARAS: the checkpoint keeps GHR, AlignQueue head+tail, and RAS_top.
   // With RASEntry{retPC,times} the height != call/ret depth, so RAS_top
   // is checkpointed directly. All three are uint8_t — ring counters wrap
-  // at 256 (16× RAS_CAP/ALIGNQ_CAP, safe for in-flight <64).
+  // at 256 (8× ALIGNQ_CAP / 16× RAS_CAP, safe for in-flight <64).
   uint16_t GHR_snapshot;
   uint8_t alignHead;
   uint8_t alignTail;
@@ -237,5 +239,15 @@ struct LoadResponse {
   uint8_t memIndex = 0;
   uint8_t robTag = 0;
   int32_t value = 0;
+};
+
+// IMEM -> ICache line-return bus: a full 16B cache line delivered as a
+// fixed-width 4x32-bit word bundle (RTL-style data bus, not a pointer).
+// word index 0..3 maps to byte offsets 0..15; the critical word for a fetch
+// at pc is data[(pc >> 2) & 3].
+struct LineReturn {
+  bool valid = false;
+  uint32_t lineAddr = 0;
+  uint32_t data[4] = {0, 0, 0, 0};
 };
 #endif // COMMON_HPP

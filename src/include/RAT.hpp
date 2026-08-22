@@ -25,6 +25,8 @@ class RAT {
 private:
   int RAT_PRF[REGISTER_CAP];
   RATSnapshot ratCkpt[CKPT_CAP];
+  void setRAT_PRF(int regNum, int PRF_id);
+  void restoreRAT_PRF(const RATSnapshot &snapshot);
 
 public:
   RAT() {
@@ -33,9 +35,7 @@ public:
       RAT_PRF[i] = i;
   }
   int readRAT_PRF(int regNum) const;
-  void setRAT_PRF(int regNum, int PRF_id);
   RATSnapshot snapshotRAT_PRF() const;
-  void restoreRAT_PRF(const RATSnapshot &snapshot);
   OperandInfo readOperand(int regNum) const;
   void tick(const RATInput &, systemState &);
 };

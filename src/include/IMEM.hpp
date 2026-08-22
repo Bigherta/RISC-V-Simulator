@@ -1,7 +1,5 @@
 #pragma once
-#include "BPU.hpp"
 #include "Memory.hpp"
-#include "FetchQueue.hpp"
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
@@ -9,16 +7,13 @@
 struct systemState;
 struct IMEMInput {
   SquashInfo squashDetect;
-  const FetchQueue &FQModule;
   FetchDecision fetchDecision;
-  IMEMInput(const FetchQueue &fq) : FQModule(fq) {}
+  bool lineConsumed = false;
 };
 struct IMEMRequest {
-  uint32_t raw_inst;
+  uint8_t data[CACHE_BLOCK_CAP];
+  uint32_t lineAddr = 0;
   int remain_cycle = 0;
-  int32_t PC;
-  int32_t predictPC;
-  uint8_t ckptId;
   bool valid = false;
 };
 class IMEM : public Memory {
@@ -26,8 +21,9 @@ private:
   IMEMRequest IMEMreqs[IMEM_CAP];
   uint8_t head = 0;
   uint8_t count = 0;
-  uint32_t programCounter = 0;
-  bool haltFetched = false;
+  void clear();
+  void pushRequest(uint32_t lineAddr);
+  void pop();
 
 public:
   IMEM() { std::memset(IMEMreqs, 0, sizeof(IMEMreqs)); }
@@ -36,28 +32,13 @@ public:
   }
   IMEM(const IMEM &) = default;
   IMEM &operator=(const IMEM &) = default;
-
-  inline uint32_t read_inst(uint32_t pc) const {
-    return static_cast<uint32_t>(read_data(pc)) |
-           (static_cast<uint32_t>(read_data(pc + 1)) << 8) |
-           (static_cast<uint32_t>(read_data(pc + 2)) << 16) |
-           (static_cast<uint32_t>(read_data(pc + 3)) << 24);
-  }
-  void clear();
-  void snapshotFrom(const IMEM &other);
   uint8_t getHead() const { return head; }
-  uint32_t getPC() const { return programCounter; }
-  bool isHaltFetched() const { return haltFetched; }
-  bool isRequestFull() const { return count == IMEM_CAP; }
   bool isReturnReady() const {
     return count > 0 && IMEMreqs[head].valid &&
            IMEMreqs[head].remain_cycle == 0;
   }
-  uint32_t returnRaw() const { return IMEMreqs[head].raw_inst; }
-  int32_t returnPC() const { return IMEMreqs[head].PC; }
-  int32_t returnPredictPC() const { return IMEMreqs[head].predictPC; }
-  uint8_t returnCkptId() const { return IMEMreqs[head].ckptId; }
-  void pop();
-  void pushRequest(uint32_t pc, int32_t predictPC, uint8_t ckptId);
+  bool isRequestFull() const { return count == IMEM_CAP; }
+  LineReturn getReturn() const;
   void tick(const IMEMInput &, systemState &);
+  void snapshotFrom(const IMEM &other);
 };

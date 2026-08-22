@@ -5,56 +5,75 @@ void IMEM::clear() {
   memset(IMEMreqs, 0, sizeof(IMEMreqs));
   head = count = 0;
 }
-void IMEM::snapshotFrom(const IMEM &other) {
-  memcpy(IMEMreqs, other.IMEMreqs, sizeof(IMEMreqs));
-  head = other.head;
-  count = other.count;
-  programCounter = other.programCounter;
-  haltFetched = other.haltFetched;
-}
+
 void IMEM::pop() {
   IMEMreqs[head].valid = false;
   IMEMreqs[head].remain_cycle = 0;
   head = (head + 1) & (IMEM_CAP - 1);
-  count--;
+  --count;
 }
-void IMEM::pushRequest(uint32_t pc, int32_t predictPC, uint8_t ckptId) {
+
+void IMEM::pushRequest(uint32_t lineAddr) {
   assert(count != IMEM_CAP);
+  auto idx = (head + count) & (IMEM_CAP - 1);
   IMEMRequest request{};
   request.remain_cycle = 3;
-  request.ckptId = ckptId;
-  request.PC = pc;
-  request.predictPC = predictPC;
+  request.lineAddr = lineAddr;
   request.valid = true;
-  IMEMreqs[(head + (count++)) & (IMEM_CAP - 1)] = request;
+  IMEMreqs[idx] = request;
+  ++count;
 }
+
+void IMEM::snapshotFrom(const IMEM &other) {
+  memcpy(IMEMreqs, other.IMEMreqs, sizeof(IMEMreqs));
+  head = other.head;
+  count = other.count;
+}
+
+LineReturn IMEM::getReturn() const {
+  LineReturn out;
+  if (isReturnReady()) {
+    out.valid = true;
+    out.lineAddr = IMEMreqs[head].lineAddr;
+    for (int w = 0; w < 4; ++w) {
+      uint32_t word = 0;
+      for (int b = 0; b < 4; ++b) {
+        word |= static_cast<uint32_t>(IMEMreqs[head].data[w * 4 + b]) << (b * 8);
+      }
+      out.data[w] = word;
+    }
+  }
+  return out;
+}
+
 void IMEM::tick(const IMEMInput &input, systemState &CPUstate) {
   if (input.squashDetect.needSquash) {
     CPUstate.IMEMModule.clear();
-    CPUstate.IMEMModule.programCounter = input.squashDetect.SquashPC;
-    CPUstate.IMEMModule.haltFetched = false;
     return;
   }
-  if (isReturnReady()) {
-    if (haltFetched) {
-      CPUstate.IMEMModule.pop();
-    } else if (!input.FQModule.isFull()) {
-      uint32_t raw = returnRaw();
-      if (raw == 0x0ff00513)
-        CPUstate.IMEMModule.haltFetched = true;
-      CPUstate.IMEMModule.pop();
-    }
+  // stage 3 pop: release the queue head once the returned line is consumed
+  // by ICache (write-own-only)
+  if (input.lineConsumed) {
+    CPUstate.IMEMModule.pop();
   }
+  // stage 1 claim the fetch-line request (write-own-only, mirrors DMEM
+  // !busy && decision.valid)
   if (input.fetchDecision.valid) {
-    CPUstate.IMEMModule.pushRequest(input.fetchDecision.pc,
-        input.fetchDecision.predictedPC, input.fetchDecision.ckptId);
-    CPUstate.IMEMModule.programCounter = input.fetchDecision.predictedPC;
+    CPUstate.IMEMModule.pushRequest(static_cast<uint32_t>(input.fetchDecision.pc));
   }
+  // pipeline decrement: fixed-length scan with no break (RTL dataflow semantics)
   for (int i = 0; i < IMEM_CAP; ++i) {
     const auto &sreq = IMEMreqs[i];
     if (sreq.valid && sreq.remain_cycle > 0) {
-      if (--CPUstate.IMEMModule.IMEMreqs[i].remain_cycle == 0)
-        CPUstate.IMEMModule.IMEMreqs[i].raw_inst = read_inst(sreq.PC);
+      int next = sreq.remain_cycle - 1;
+      CPUstate.IMEMModule.IMEMreqs[i].remain_cycle = next;
+      if (next == 0) {
+        // line burst fill: read the whole 16B line from Memory
+        for (int b = 0; b < CACHE_BLOCK_CAP; ++b) {
+          CPUstate.IMEMModule.IMEMreqs[i].data[b] =
+              CPUstate.IMEMModule.read_data(sreq.lineAddr + b);
+        }
+      }
     }
   }
 }

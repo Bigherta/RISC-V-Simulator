@@ -10,6 +10,8 @@
 #include "DMEM.hpp"
 #include "Decoder.hpp"
 #include "FetchQueue.hpp"
+#include "FetchUnit.hpp"
+#include "ICache.hpp"
 #include "IMEM.hpp"
 #include "LQ.hpp"
 #include "SQ.hpp"
@@ -19,7 +21,6 @@
 #include "ROB.hpp"
 #include "RS.hpp"
 #include "common.hpp"
-#include <cstdint>
 #include <cstring>
 
 struct systemState {
@@ -32,12 +33,14 @@ struct systemState {
   LQ LQModule;
   SQ SQModule;
   FetchQueue FQModule;
+  ICache ICacheModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
   BPU BPUModule;
   FlushArbiter flushArbiter;
+  FetchUnit FetchUnitModule;
 
   systemState() = default;
   systemState(Memory mem)
@@ -58,12 +61,14 @@ private:
   LQ LQModule;
   SQ SQModule;
   FetchQueue FQModule;
+  ICache ICacheModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
   IMEM IMEMModule;
   BPU BPUModule;
   FlushArbiter flushArbiter;
+  FetchUnit FetchUnitModule;
   CDBOutput cdbOut;
   IssuePacket issuePacket;
   AGUInput aguInput{RSModule};
@@ -73,22 +78,24 @@ private:
   DMEMInput dmemInput{};
   DecodeInput decodeInput{FQModule, issuePacket};
   LQInput lqInput{AGUModule, RSModule, ROBModule, DMEMModule, SQModule,
-                  issuePacket};
+                   issuePacket};
   SQInput sqInput{AGUModule, RSModule, ROBModule, DMEMModule, LQModule,
-                  issuePacket};
+                   issuePacket};
   RSInput rsInput{ROBModule, issuePacket};
   ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
   PRFInput prfInput{LQModule, SQModule, ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};
   FlushArbiterInput flarbInput{BRUModule, ROBModule, AGUModule, LQModule,
-                               SQModule};
+                                SQModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
-                               RATModule,        PRFModule, LQModule,
-                               SQModule};
+                                RATModule,        PRFModule, LQModule,
+                                SQModule};
   SquashInfo squashDetect;
   FetchDecision fetchDecision;
-  IMEMInput imemInput{FQModule};
-  FQInput fqInput{IMEMModule, DecodeUnitModule};
+  FetchUnitInput fetchUnitInput;
+  IMEMInput imemInput;
+  ICacheInput icacheInput{};
+  FQInput fqInput{ICacheModule, DecodeUnitModule};
 public:
   CPU(Memory mem);
   void comb();

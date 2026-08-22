@@ -16,6 +16,8 @@ set(CPU_SOURCES
     src/Arbiter/Arbiter.cpp
     src/IssueArbiter/IssueArbiter.cpp
     src/IMEM/IMEM.cpp
+    src/ICache/ICache.cpp
+    src/FetchUnit/FetchUnit.cpp
     src/LQ/LQ.cpp
     src/SQ/SQ.cpp
     src/RAT/RAT.cpp

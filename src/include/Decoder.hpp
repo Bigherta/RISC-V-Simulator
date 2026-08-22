@@ -1,9 +1,7 @@
 #pragma once
-#ifndef DECODER_HPP
-#define DECODER_HPP
+#include "FetchQueue.hpp"
 #include "common.hpp"
 #include <cstdint>
-
 class Decoder {
 public:
   static Uop decode(int32_t raw_inst);
@@ -44,7 +42,6 @@ public:
   uint8_t getTail() const;
   void clear();
 };
-#include "FetchQueue.hpp"
 struct IssuePacket;
 struct DecodeInput {
   SquashInfo squashDetect;
@@ -60,6 +57,8 @@ class DecodeUnit {
 private:
   InstructQueue iq;
   void push(Uop inst) { iq.push(inst); }
+  void pop() { iq.pop(); }
+  void clear() { iq.clear(); }
 
 public:
   void tick(const DecodeInput &input, systemState &CPUstate);
@@ -78,9 +77,6 @@ public:
   bool headAllocDest() const { return iq.headAllocDest(); }
   int32_t headPredictedPC() const { return iq.headPredictedPC(); }
   uint8_t headCkptId() const { return iq.headCkptId(); }
-  void pop() { iq.pop(); }
-  void clear() { iq.clear(); }
   uint8_t getHead() const { return iq.getHead(); }
   uint8_t getTail() const { return iq.getTail(); }
 };
-#endif // DECODER_HPP

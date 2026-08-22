@@ -28,8 +28,8 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   ├── main/main.cpp              # 入口
 │   ├── CPU/CPU.cpp                # comb() 快照 + 组合求值（FetchDecision / CDBArbiter /
 │   │                              #   CDBBus / IssueArbiter / DispatchArbiter /
-│   │                              #   MemDispatchDecision / LoadResponse）
-│   │                              #   → 按流水顺序调用 14 个模块的 tick
+│   │                              #   MemDispatchDecision / LoadResponse / LineReturn）
+│   │                              #   → 按流水顺序调用 17 个模块的 tick
 │   ├── include/                   # 全部头文件
 │   │   ├── common.hpp             # 容量常量与公共结构体（ROBEntry / CDBBus / FetchDecision / …）
 │   │   ├── CPU.hpp                # systemState（活体模块）+ CPU（快照成员 + Input 接线）
@@ -38,8 +38,10 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── BRU.hpp                # 分支执行单元（含输出缓冲）
 │   │   ├── BranchPredictor.hpp    # Tournament 分支预测器（LHT + gshare + selector + BTB + RAS）
 │   │   ├── Decoder.hpp            # 译码器 + 指令队列 IQ
-│   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与在途请求）
+│   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与整行突发）
 │   │   ├── FetchQueue.hpp         # 取指队列 FQ
+│   │   ├── FetchUnit.hpp          # 前端 PC 寄存器 + halt 状态（程序计数器 / haltFetched）
+│   │   ├── ICache.hpp             # 16KB 直接映射指令缓存（1024 行 × 16B，word4 行总线）
 │   │   ├── IssueArbiter.hpp       # issue 组合分配（IssuePacket，无 tick）
 │   │   ├── LSQ.hpp                # 加载/存储队列（store→load 转发）
 │   │   ├── Memory.hpp             # 带延迟的内存基类
@@ -49,14 +51,15 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── RS.hpp                 # 保留站（Integer / Load / StoreAddress / StoreValue / Branch）
 │   │   └── util.hpp               # 调试宏（VERBOSE 主题开关）
 │   ├── AGU/  ALU/  Arbiter/  BRU/  BranchPredictor/  CPU/  DMEM/  Decoder/
-│   ├── FetchQueue/  IMEM/  IssueArbiter/  LSQ/  PRF/  RAT/  ROB/  RS/   # 各模块 tick 实现
+│   ├── FetchQueue/  FetchUnit/  ICache/  IMEM/  IssueArbiter/  LSQ/  PRF/
+│   ├── RAT/  ROB/  RS/   # 各模块 tick 实现
 │   └── main/
 ├── data/                          # 测试数据
 │   ├── sample/                    # 示例程序
 │   ├── testcases/                 # 18 个官方测试点（.c 源码 + .data 机器码 + .dump 反汇编）
 │   └── golden/                    # 基线（返回值 + 时钟数）
 ├── test/                          # 乱序执行一致性测试（独立构建，不影响 OJ 提交）
-│   ├── reorder_test.cpp           # 以任意顺序调用 14 个流水级的测试驱动
+│   ├── reorder_test.cpp           # 以任意顺序调用 17 个流水级的测试驱动
 │   ├── CMakeLists.txt
 │   └── test_reorder.sh            # 一致性测试脚本
 ├── test.sh                        # 代码行为测试脚本（返回值 / 分支正确率 / 时钟数）
@@ -78,9 +81,11 @@ RISC-V-Tomasulo-CPU-Simulator/
    （LSQ → DMEM 请求准入决策，store 优先互斥）、`DMEM::LoadReturn`（DMEM → LSQ
    load 回复总线）。所有跨模块总线信号在 comb 阶段打包装入对应 `Input`；各模块
    tick 沿采样、写自己，**跨模块写为零**。
-2. **取指**：`IMEM.tick` 三段式（消费返回 / 发请求 / 管线递减）——带 3 周期延迟的
-   指令内存，请求时拍 `BranchPredictorSnapshot` 存入在途请求（4 槽环形）；返回的
-   指令经 `FQ.tick` 压入取指队列（FQ 满则背压停取）。
+2. **取指**：`FetchUnit.tick` 管理 PC / halt 状态（squash 恢复 PC、ICache 头部出现
+   halt 时 latch haltFetched、fetchDecision 有效时推进 PC）——`IMEM.tick` 三段式
+   （消费返回 / 认领行请求 / 管线递减），带 3 周期延迟的整行突发；命中路径由
+   `ICache.tick` 直接命中组包入队，缺失路径经 IMEM 整行回填，取指结果经
+   `FQ.tick` 压入取指队列（FQ 满则背压停取）。
 3. **译码**：`DecodeUnit.tick` 从 FQ 头取指令译码入 IQ；FQ 头部消费由 FQ 自己
    （读 DecodeUnit 快照判空槽）完成。
 4. **issue**：`IssueArbiter` 组合构建 `IssuePacket`（ROB/RS/LSQ 容量门控 + 操作数
@@ -136,7 +141,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ### 5.1 乱序执行一致性测试 — `test/test_reorder.sh`
 
-`test/reorder_test` 以**任意顺序**调用 14 个流水级（rat / lsq / decode / agu / bru / bp / dmem / alu / rs / rob / prf / arb / imem / fq），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
+`test/reorder_test` 以**任意顺序**调用 17 个流水级（rat / lsq / decode / agu / bru / bp / dmem / alu / rs / rob / prf / arb / imem / fq / icache / fetchunit），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
 
 构建（独立于根目录，不影响 OJ 提交）：
 
@@ -163,7 +168,7 @@ cd test
 | 100 ~ 10000ms | 随机 **100** 组 |
 | > 10000ms | 仅参考序 **1** 组（`ref` 模式，如 pi） |
 
-> 注：流水级已从早期的 7 阶段扩展为 14 阶段，全排列 = 14! = 87178291200 组已不现实，
+> 注：流水级已从早期的 7 阶段扩展为 17 阶段，全排列 = 17! = 355687428096000 组已不现实，
 > 故快档统一用随机 100 组。
 
 输出列：`Program`、`Count`（档位）、`Perms`（实际排列数）、`Value`（`x10&0xFF`）、`Clock`、`Golden(x10/clk)`、`Result`、`Time`。
@@ -179,13 +184,13 @@ cd test
 ```bash
 ./reorder_test 20  < data/testcases/gcd.data      # 20 组随机乱序
 ./reorder_test ref < data/testcases/pi.data       # 仅参考序 1 组
-./reorder_test diff "rat,lsq,decode,agu,bru,bp,dmem,alu,rs,rob,prf,arb,imem,fq" \
-                  "fq,imem,arb,prf,rob,rs,alu,dmem,bp,bru,agu,decode,lsq,rat" \
+./reorder_test diff "rat,lsq,decode,agu,bru,bp,dmem,alu,rs,rob,prf,arb,imem,fq,icache,fetchunit" \
+                  "fetchunit,icache,fq,imem,arb,prf,rob,rs,alu,dmem,bp,bru,agu,decode,sq,lq,rat" \
                   < data/testcases/gcd.data        # 两种指定顺序逐周期状态对比
 ```
 
 `diff` 模式对比两种显式指定的阶段顺序，逐周期打印首个状态分叉点（cycle / 字段 / 值），
-用于定位乱序不一致的根源（`all` = 全排列 14! 组，仅作参考，实际不可跑完）。
+用于定位乱序不一致的根源（`all` = 全排列 17! 组，仅作参考，实际不可跑完）。
 
 ### 5.2 代码行为测试 — `test.sh`
 
@@ -233,45 +238,47 @@ done
 
 ### 6.1 分支预测器配置
 
-Tournament 混合预测器（方向预测与目标预测**按控制流类型拆分**）：
+Tournament 混合预测器（方向预测与目标预测**按控制流类型拆分**，RAS 启用 `times` 合并）：
 
 | 部件 | 配置 |
 |------|------|
 | Local（LHT + PHT） | 4096 条目 LHT（每分支 8 位历史），256 个 2-bit 饱和计数器按历史模式索引 |
 | Global（gshare） | 12 位全局历史 GHR，4096 条目 2-bit 饱和计数器，按 `PC ^ GHR` 索引 |
 | 选择器 selector | 4096 个 2-bit 饱和计数器，仲裁 local / global |
-| BTB | 4096 条目，预测 taken 时给出目标地址 |
-| RAS | 128 条目返回地址栈（函数调用/返回预测） |
+| BTB | 512 条目，预测 taken 时给出目标地址 |
+| RAS | 16 条目 `RASEntry{retPC,times}`，同返回地址递归共用一条目（times 计数） |
+| SARAS | 16 条目 `AlignQueue{addr,index,times}` + checkpoint 存 `GHR/alignHead/alignTail/RAS_top`（`BPUSnapshot` 5B，`CKPT_CAP=64`，`uint8` 环绕） |
 | direction-split | **B 类条件分支**：方向表（LHT/gshare/selector）+ BTB；**JAL/JALR**：只更新 BTB（`unconditional` 恒 taken），方向表永不被恒跳指令污染 |
 
 > 设计说明：训练在 `BPUpdateArbiter` 单点原子完成（BRU 候选 → CDB 候选固定序，
 > 任意阶段乱序等价）；GHR 在**发请求时**随预测移位、误预测时由 ROB 条目的
-> checkpoint 快照恢复（`recoverCheckPoint`）；RAS 随 call/ret 预测 push/pop 维护
-> （栈顶 peek 已禁用——错误路径污染，见 `docs/硬件行为差异.md` §3.27）。
+> checkpoint 快照恢复（`recoverCheckPoint`，含 `RAS_top`）；RAS 随 call/ret 预测 push/pop 维护
+> （dedup 时 `times++`、RET 时 `times--` 或 pop，`AlignQueue` 记录 `{addr,index,times}` 供 flush 撤销；
+> 栈顶 peek 已禁用——错误路径污染，见 `docs/硬件行为差异.md` §3.27）。
 
 ### 6.2 逐测试点结果
 
 | 测试点 | x10（返回值） | 时钟周期数 | 分支正确/总数 | 准确率 | 耗时 | 结果 |
 |--------|:---:|-----------:|--------------:|-------:|-----:|:----:|
-| array_test1 | 123 | 423 | 20/46 | 43.48% | 0.04s | OK |
-| array_test2 | 43 | 424 | 29/51 | 56.86% | 0.03s | OK |
-| basicopt1 | 88 | 924,270 | 166,733/202,275 | 82.43% | 5.08s | OK |
-| bulgarian | 159 | 422,037 | 88,619/92,746 | 95.55% | 2.57s | OK |
-| expr | 58 | 1,012 | 88/125 | 70.40% | 0.03s | OK |
-| gcd | 178 | 1,124 | 110/180 | 61.11% | 0.03s | OK |
-| hanoi | 20 | 263,242 | 21,264/28,220 | 75.35% | 1.63s | OK |
-| lvalue2 | 175 | 144 | 7/17 | 41.18% | 0.03s | OK |
-| magic | 106 | 845,157 | 87,065/100,720 | 86.44% | 5.15s | OK |
-| manyarguments | 40 | 156 | 10/20 | 50.00% | 0.03s | OK |
-| multiarray | 115 | 2,180 | 218/274 | 79.56% | 0.04s | OK |
-| naive | 94 | 73 | 0/4 | 0.00% | 0.03s | OK |
-| pi | 137 | 187,675,429 | 35,492,952/42,896,416 | 82.74% | 1,034.62s | OK |
-| qsort | 105 | 1,589,533 | 262,467/273,123 | 96.10% | 8.93s | OK |
-| queens | 171 | 993,730 | 80,907/102,874 | 78.65% | 5.98s | OK |
-| statement_test | 50 | 2,152 | 173/288 | 60.07% | 0.04s | OK |
-| superloop | 134 | 736,895 | 441,891/453,293 | 97.48% | 3.75s | OK |
-| tak | 186 | 2,844,145 | 177,691/241,542 | 73.57% | 17.82s | OK |
-| **TOTAL**| — | **196,302,126** | **36,820,244/44,392,214** | **82.94%** | — | **18/18** |
+| array_test1 | 123 | 362 | 22/47 | 46.81% | 0.03s | OK |
+| array_test2 | 43 | 373 | 31/53 | 58.49% | 0.03s | OK |
+| basicopt1 | 88 | 634,754 | 180,078/199,517 | 90.26% | 2.05s | OK |
+| bulgarian | 159 | 373,262 | 89,849/93,923 | 95.66% | 1.48s | OK |
+| expr | 58 | 890 | 95/133 | 71.43% | 0.03s | OK |
+| gcd | 178 | 925 | 115/188 | 61.17% | 0.03s | OK |
+| hanoi | 20 | 217,967 | 25,837/29,238 | 88.37% | 0.87s | OK |
+| lvalue2 | 175 | 141 | 8/18 | 44.44% | 0.03s | OK |
+| magic | 106 | 792,180 | 91,587/105,598 | 86.73% | 3.07s | OK |
+| manyarguments | 40 | 149 | 10/20 | 50.00% | 0.03s | OK |
+| multiarray | 115 | 1,849 | 229/279 | 82.08% | 0.03s | OK |
+| naive | 94 | 73 | 0/4 | 0.00% | 0.02s | OK |
+| pi | 137 | 142,123,832 | 36,165,143/42,975,114 | 84.15% | 499.52s | OK |
+| qsort | 105 | 1,332,296 | 267,385/276,586 | 96.67% | 4.53s | OK |
+| queens | 171 | 892,865 | 85,846/106,203 | 80.83% | 3.43s | OK |
+| statement_test | 50 | 1,697 | 181/286 | 63.29% | 0.03s | OK |
+| superloop | 134 | 576,952 | 443,893/453,799 | 97.82% | 1.67s | OK |
+| tak | 186 | 1,961,070 | 201,778/222,949 | 90.50% | 8.22s | OK |
+| **TOTAL**| — | **148,911,637** | **37,552,087/44,463,955** | **84.46%** | — | **18/18** |
 
 > 说明：`naive` 只有 4 次条件分支且属于基本不可预测的模式，正确率 0% 属正常；
 > `array_test1` 等小测试点分支基数小，正确率波动大，参考大测试点（qsort / superloop
@@ -282,7 +289,7 @@ Tournament 混合预测器（方向预测与目标预测**按控制流类型拆�
 
 ```bash
 cmake -S . -B build && cmake --build build   # 生成 ./code
-./test.sh                                    # 全量测试（pi 约需 19 分钟）
+./test.sh                                    # 全量测试（pi 约 8 分钟）
 ```
 
 ---

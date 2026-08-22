@@ -18,21 +18,53 @@ void CPU::comb() {
   memcpy(&LQModule, &CPUstate.LQModule, sizeof(LQModule));
   memcpy(&SQModule, &CPUstate.SQModule, sizeof(SQModule));
   memcpy(&FQModule, &CPUstate.FQModule, sizeof(FQModule));
+  memcpy(&ICacheModule, &CPUstate.ICacheModule, sizeof(ICacheModule));
   memcpy(&DecodeUnitModule, &CPUstate.DecodeUnitModule,
          sizeof(DecodeUnitModule));
   memcpy(&PRFModule, &CPUstate.PRFModule, sizeof(PRFModule));
   memcpy(&BPUModule, &CPUstate.BPUModule, sizeof(BPUModule));
   IMEMModule.snapshotFrom(CPUstate.IMEMModule);
   memcpy(&flushArbiter, &CPUstate.flushArbiter, sizeof(flushArbiter));
+  memcpy(&FetchUnitModule, &CPUstate.FetchUnitModule,
+         sizeof(FetchUnitModule));
   DMEMModule.snapshotFrom(CPUstate.DMEMModule);
   squashDetect = CPUstate.flushArbiter.arbitResult();
-  imemInput.squashDetect = squashDetect;
   fetchDecision = FetchDecision::build(
-      BPUModule, IMEMModule.getPC(), squashDetect, IMEMModule.isHaltFetched(),
-      FQModule.isFull(), IMEMModule.isRequestFull());
-  imemInput.fetchDecision = fetchDecision;
+      BPUModule, FetchUnitModule.getPC(), squashDetect,
+      FetchUnitModule.isHaltFetched(), FQModule.isFull(),
+      ICacheModule.isRequestFull() || IMEMModule.isRequestFull());
+  // FetchUnit halt signal: latch when the ICache head holds the halt
+  // instruction (combinational bus)
+  {
+    bool haltSignal =
+        ICacheModule.isReturnReady() && ICacheModule.returnRaw() == 0x0ff00513;
+    fetchUnitInput.squashDetect = squashDetect;
+    fetchUnitInput.fetchDecision = fetchDecision;
+    fetchUnitInput.haltSignal = haltSignal;
+  }
+  // ICache hit check (comb, read snapshot ICacheModule) -> gate IMEM miss request
+  // The line-return and FQ-consume handshakes are combinational predicates,
+  // each side clears its own state (write-own-only)
+  {
+    bool icacheHit = fetchDecision.valid && ICacheModule.hit(fetchDecision.pc);
+    FetchDecision imemFetch = fetchDecision;
+    if (icacheHit)
+      imemFetch.valid = false; // hit: no IMEM line fetch needed
+    else if (fetchDecision.valid)
+      imemFetch.pc = fetchDecision.pc & ~0xF; // line-aligned block addr for IMEM
+    LineReturn lineReturn = IMEMModule.getReturn();
+    imemInput.squashDetect = squashDetect;
+    imemInput.fetchDecision = imemFetch;
+    imemInput.lineConsumed = lineReturn.valid;
+    icacheInput.squashDetect = squashDetect;
+    icacheInput.fetchDecision = fetchDecision;
+    icacheInput.lineReturn = lineReturn;
+    bool popConsume = ICacheModule.isReturnReady() &&
+                      !FetchUnitModule.isHaltFetched() && !FQModule.isFull();
+    icacheInput.popConsume = popConsume;
+  }
   fqInput.squashDetect = squashDetect;
-  fqInput.haltFetched = IMEMModule.isHaltFetched();
+  fqInput.haltFetched = FetchUnitModule.isHaltFetched();
   bpInput.fetchDecision = fetchDecision;
   cdbOut = CDBArbiter::build(ALUModule, LQModule, squashDetect);
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
@@ -108,6 +140,8 @@ void CPU::run() {
   while (!finish) {
     comb();
     IMEMModule.tick(imemInput, CPUstate);
+    FetchUnitModule.tick(fetchUnitInput, CPUstate);
+    ICacheModule.tick(icacheInput, CPUstate);
     FQModule.tick(fqInput, CPUstate);
     LQModule.tick(lqInput, CPUstate);
     SQModule.tick(sqInput, CPUstate);
@@ -137,9 +171,8 @@ void CPU::run() {
                            CPUstate.BPUModule.getBranchTotal()
                      : 0.0);
   if (debug::enabled(debug::TOPIC_MDP))
-    debug::print("mdp: violations=%llu speculative=%llu\n",
-                 CPUstate.flushArbiter.getLoadViolations(),
-                 CPUstate.DMEMModule.getSpeculativeLoads());
+    debug::print("mdp: violations=%llu\n",
+                 CPUstate.flushArbiter.getLoadViolations());
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &

@@ -103,8 +103,8 @@ void BRU::flush(uint8_t tag) {
 }
 
 void BRU::tick(const BRUInput &input, systemState &CPUstate) {
-  // 段1：消费派发总线（select 已在 DispatchArbiter 快照边求值；
-  // RS 槽位释放由 RSUnit.tick 自理）
+  // stage 1: consume the dispatch bus (select was already evaluated on the
+  // DispatchArbiter snapshot side; RS slot release is handled by RSUnit.tick)
   if (input.dispatch.valid) {
     auto &rs = input.RSModule.branchRS[input.dispatch.rsIndex];
     CPUstate.BRUModule.BRUExecute(rs.vj, rs.vk, rs.pc, rs.imm, rs.op,

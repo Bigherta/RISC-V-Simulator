@@ -15,7 +15,7 @@ static constexpr uint32_t MEM_SIZE = 128 * 1024;
 class Memory {
 protected:
   uint8_t* mem;
-
+  
 public:
   Memory() : mem(new uint8_t[MEM_SIZE]()) {}
   ~Memory() { delete[] mem; }
@@ -55,14 +55,11 @@ public:
   inline uint32_t hex2uint32(int len, char hex[]) const;
   
   uint8_t read_data(uint32_t addr) const {
-    if (addr >= MEM_SIZE)
-      throw std::runtime_error("Memory read out of bounds");
-    return mem[addr];
+    return addr < MEM_SIZE ? mem[addr] : 0;
   }
   void write_data(uint32_t addr, uint8_t data) {
-    if (addr >= MEM_SIZE)
-      throw std::runtime_error("Memory write out of bounds");
-    mem[addr] = data;
+    if (addr < MEM_SIZE)
+      mem[addr] = data;
   }
   bool operator==(const Memory &other) const {
     return std::memcmp(mem, other.mem, MEM_SIZE) == 0;

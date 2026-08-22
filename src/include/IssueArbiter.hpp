@@ -40,7 +40,6 @@ struct IssueArbiterInput {
   const PRF &PRFModule;
   const LQ &LQModule;
   const SQ &SQModule;
-  CDBOutput cdbOut;
   SquashInfo squashDetect;
   IssueArbiterInput(const DecodeUnit &DecodeUnitModule, const ROB &ROBModule,
                     const RSUnit &RSModule, const RAT &RATModule,
@@ -64,7 +63,6 @@ private:
                                  int n_bytes);
   static IssuePacket issue_B(const IssueArbiterInput &, const UopView &inst);
   static Operation decodeOp(const UopView &inst);
-  static CDBBypassResult CDBBypass(const IssueArbiterInput &, int phy);
 
 public:
   static IssuePacket build(const IssueArbiterInput &);

@@ -4,16 +4,14 @@
 #include "../include/PRF.hpp"
 #include "../include/RAT.hpp"
 #include "../include/ROB.hpp"
-CDBBypassResult IssueArbiter::CDBBypass(const IssueArbiterInput &input,
-                                        int phy) {
-  CDBBypassResult out{};
-  if (input.cdbOut.valid && !input.cdbOut.result.isControl &&
-      input.ROBModule.getNewPhy(
-          input.ROBModule.getIndexByTag(input.cdbOut.result.robTag)) == phy) {
-    out.valid = true;
-    out.value = input.cdbOut.result.value;
-  }
-  return out;
+// Resolve an architectural register source into an Operand. RS no longer
+// caches values: register sources store only the phy tag (readiness/read from
+// PRF at dispatch), x0 is a constant zero, and immediates/PC are constants.
+static Operand resolveSrc(const IssueArbiterInput &input, int regNum) {
+  auto op = input.RATModule.readOperand(regNum);
+  if (op.ready)  // x0: constant zero
+    return {.tag = -1, .imm = op.value};
+  return {.tag = op.phyRegIndex, .imm = 0};
 }
 
 IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
@@ -34,42 +32,12 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.robTag = input.ROBModule.getNextTag();
   p.integerRS.free = false;
   p.integerRS.op = decodeOp(inst);
-  auto regNum1 = inst.rs1;
-  auto regNum2 = inst.rs2;
   auto destination = inst.rd;
-  auto op1 = input.RATModule.readOperand(regNum1);
-  if (op1.ready) {
-    p.integerRS.vj = op1.value;
-  } else {
-    if (input.PRFModule.isReady(op1.phyRegIndex)) {
-      p.integerRS.vj = input.PRFModule.getValue(op1.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op1.phyRegIndex);
-      if (bypass.valid) {
-        p.integerRS.vj = bypass.value;
-      } else {
-        p.integerRS.qj = op1.phyRegIndex;
-      }
-    }
-  }
+  p.integerRS.src1 = resolveSrc(input, inst.rs1);
   if (imm_as_vk) {
-    p.integerRS.vk = inst.imm;
+    p.integerRS.src2 = {.tag = -1, .imm = inst.imm};
   } else if (has_rs2) {
-    auto op2 = input.RATModule.readOperand(regNum2);
-    if (op2.ready) {
-      p.integerRS.vk = op2.value;
-    } else {
-      if (input.PRFModule.isReady(op2.phyRegIndex)) {
-        p.integerRS.vk = input.PRFModule.getValue(op2.phyRegIndex);
-      } else {
-        auto bypass = CDBBypass(input, op2.phyRegIndex);
-        if (bypass.valid) {
-          p.integerRS.vk = bypass.value;
-        } else {
-          p.integerRS.qk = op2.phyRegIndex;
-        }
-      }
-    }
+    p.integerRS.src2 = resolveSrc(input, inst.rs2);
   }
   if (inst.allocDest && !input.PRFModule.isFreeListEmpty()) {
     p.allocDest = true;
@@ -119,9 +87,9 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.integerRS.op = decodeOp(inst);
   auto destination = inst.rd;
   if (has_PC) {
-    p.integerRS.vj = inst.pc;
+    p.integerRS.src1 = {.tag = -1, .imm = static_cast<int32_t>(inst.pc)};
   }
-  p.integerRS.vk = inst.imm;
+  p.integerRS.src2 = {.tag = -1, .imm = inst.imm};
   if (inst.allocDest && !input.PRFModule.isFreeListEmpty()) {
     p.allocDest = true;
     p.phy = input.PRFModule.getFreeListSlot(input.PRFModule.getHeadSeq());
@@ -169,38 +137,8 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   p.branchRS.op = decodeOp(inst);
   p.branchRS.imm = inst.imm;
   p.branchRS.pc = inst.pc;
-  auto regNum1 = inst.rs1;
-  auto regNum2 = inst.rs2;
-  auto op1 = input.RATModule.readOperand(regNum1);
-  if (op1.ready) {
-    p.branchRS.vj = op1.value;
-  } else {
-    if (input.PRFModule.isReady(op1.phyRegIndex)) {
-      p.branchRS.vj = input.PRFModule.getValue(op1.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op1.phyRegIndex);
-      if (bypass.valid) {
-        p.branchRS.vj = bypass.value;
-      } else {
-        p.branchRS.qj = op1.phyRegIndex;
-      }
-    }
-  }
-  auto op2 = input.RATModule.readOperand(regNum2);
-  if (op2.ready) {
-    p.branchRS.vk = op2.value;
-  } else {
-    if (input.PRFModule.isReady(op2.phyRegIndex)) {
-      p.branchRS.vk = input.PRFModule.getValue(op2.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op2.phyRegIndex);
-      if (bypass.valid) {
-        p.branchRS.vk = bypass.value;
-      } else {
-        p.branchRS.qk = op2.phyRegIndex;
-      }
-    }
-  }
+  p.branchRS.src1 = resolveSrc(input, inst.rs1);
+  p.branchRS.src2 = resolveSrc(input, inst.rs2);
   p.robEntry = ROBEntry(ROBType::BRANCH);
   p.robEntry.pc = inst.pc;
   p.robEntry.predictedPC = inst.predictedPC;
@@ -233,25 +171,10 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.loadRS.memIndex = input.LQModule.getTail();
   p.loadRS.free = false;
   p.loadRS.op = decodeOp(inst);
-  auto regNum1 = inst.rs1;
   auto destination = inst.rd;
 
-  auto op1 = input.RATModule.readOperand(regNum1);
-  if (op1.ready) {
-    p.loadRS.vj = op1.value;
-  } else {
-    if (input.PRFModule.isReady(op1.phyRegIndex)) {
-      p.loadRS.vj = input.PRFModule.getValue(op1.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op1.phyRegIndex);
-      if (bypass.valid) {
-        p.loadRS.vj = bypass.value;
-      } else {
-        p.loadRS.qj = op1.phyRegIndex;
-      }
-    }
-  }
-  p.loadRS.vk = inst.imm;
+  p.loadRS.src1 = resolveSrc(input, inst.rs1);
+  p.loadRS.src2 = {.tag = -1, .imm = inst.imm};
   if (inst.allocDest && !input.PRFModule.isFreeListEmpty()) {
     p.allocDest = true;
     p.phy = input.PRFModule.getFreeListSlot(input.PRFModule.getHeadSeq());
@@ -296,42 +219,12 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
   p.storeValueRS.memIndex = p.storeAddrRS.memIndex;
   p.storeAddrRS.free = false;
   p.storeAddrRS.op = decodeOp(inst);
-  auto regNum1 = inst.rs1;
-  auto regNum2 = inst.rs2;
 
-  auto op1 = input.RATModule.readOperand(regNum1);
-  if (op1.ready) {
-    p.storeAddrRS.vj = op1.value;
-  } else {
-    if (input.PRFModule.isReady(op1.phyRegIndex)) {
-      p.storeAddrRS.vj = input.PRFModule.getValue(op1.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op1.phyRegIndex);
-      if (bypass.valid) {
-        p.storeAddrRS.vj = bypass.value;
-      } else {
-        p.storeAddrRS.qj = op1.phyRegIndex;
-      }
-    }
-  }
-  p.storeAddrRS.vk = inst.imm;
+  p.storeAddrRS.src1 = resolveSrc(input, inst.rs1);
+  p.storeAddrRS.src2 = {.tag = -1, .imm = inst.imm};
 
   p.storeValueRS.free = false;
-  auto op2 = input.RATModule.readOperand(regNum2);
-  if (op2.ready) {
-    p.storeValueRS.vrs2 = op2.value;
-  } else {
-    if (input.PRFModule.isReady(op2.phyRegIndex)) {
-      p.storeValueRS.vrs2 = input.PRFModule.getValue(op2.phyRegIndex);
-    } else {
-      auto bypass = CDBBypass(input, op2.phyRegIndex);
-      if (bypass.valid) {
-        p.storeValueRS.vrs2 = bypass.value;
-      } else {
-        p.storeValueRS.qrs2 = op2.phyRegIndex;
-      }
-    }
-  }
+  p.storeValueRS.data = resolveSrc(input, inst.rs2);
   p.robEntry = ROBEntry(ROBType::STORE);
   p.robEntry.pc = inst.pc;
   p.robEntry.lqtTailSnapshot = input.LQModule.getTail();

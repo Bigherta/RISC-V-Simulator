@@ -121,8 +121,9 @@ void ALU::flush(uint8_t tag) {
 void ALU::tick(const ALUInput &input, systemState &CPUstate) {
   if (input.dispatch.valid) {
     auto &rs = input.RSModule.integerRS[input.dispatch.rsIndex];
-    CPUstate.ALUModule.push(rs.vj, rs.vk, rs.op,
-                            input.dispatch.robTag,
+    CPUstate.ALUModule.push(input.PRFModule.getOperandValue(rs.src1),
+                            input.PRFModule.getOperandValue(rs.src2),
+                            rs.op, input.dispatch.robTag,
                             isControlOp(rs.op));
   }
   // ALU writeBack: consume this unit's own grant on the CDB result.

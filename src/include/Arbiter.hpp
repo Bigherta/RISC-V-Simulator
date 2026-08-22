@@ -48,14 +48,12 @@ struct FlushArbiterInput {
 class FlushArbiter {
 private:
   FlushRequest requests[FLUSHARBITER_CAP];
-  uint64_t loadViolations = 0; // naive speculative-load violation counter (diagnostics)
   void receive(SquashInfo request);
   void clear(uint8_t tag);
 public:
   FlushArbiter();
   SquashInfo arbitResult() const;
   FlushRequest getRequest(int i) const;
-  uint64_t getLoadViolations() const { return loadViolations; }
   void tick(const FlushArbiterInput &, systemState &);
 };
 
@@ -76,7 +74,7 @@ public:
 class DispatchArbiter {
 public:
   static DispatchBus arbitrate(const RSUnit &RS, const ALU &ALU, const AGU &AGU,
-                               const BRU &BRU, const ROB &ROB,
+                               const BRU &BRU, const ROB &ROB, const PRF &PRF,
                                const SquashInfo &squash);
 };
 

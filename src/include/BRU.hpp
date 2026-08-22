@@ -3,12 +3,15 @@
 #include "common.hpp"
 #include <cstdint>
 struct systemState;
+struct PRF;
 struct BRUInput {
   SquashInfo squashDetect;
   const ROB &ROBModule;
   const RSUnit &RSModule;
+  const PRF &PRFModule;
   DispatchInfo dispatch;
-  BRUInput(const ROB &rob, const RSUnit &rs) : ROBModule(rob), RSModule(rs) {}
+  BRUInput(const ROB &rob, const RSUnit &rs, const PRF &prf)
+      : ROBModule(rob), RSModule(rs), PRFModule(prf) {}
 };
 class BRU {
   friend struct ReorderTester;

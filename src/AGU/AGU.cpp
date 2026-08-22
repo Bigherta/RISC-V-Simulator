@@ -79,12 +79,14 @@ void AGU::tick(const AGUInput &input, systemState &CPUstate) {
   if (input.dispatch.valid) {
     if (input.dispatch.rsType == RSType::Load) {
       auto &rs = input.RSModule.loadRS[input.dispatch.rsIndex];
-      CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op,
-                              input.dispatch.robTag, rs.memIndex);
+      CPUstate.AGUModule.push(input.PRFModule.getOperandValue(rs.src1),
+                              input.PRFModule.getOperandValue(rs.src2),
+                              rs.op, input.dispatch.robTag, rs.memIndex);
     } else {
       auto &rs = input.RSModule.storeAddressRS[input.dispatch.rsIndex];
-      CPUstate.AGUModule.push(rs.vj, rs.vk, rs.op,
-                              input.dispatch.robTag, rs.memIndex);
+      CPUstate.AGUModule.push(input.PRFModule.getOperandValue(rs.src1),
+                              input.PRFModule.getOperandValue(rs.src2),
+                              rs.op, input.dispatch.robTag, rs.memIndex);
     }
   }
   // AGU remove the first entry every cycle

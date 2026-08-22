@@ -131,9 +131,9 @@ struct CDBOutput {
   uint8_t memIndex = 0;
 };
 
-struct CDBBypassResult {
-  bool valid = false;
-  int32_t value = 0;
+struct Operand {
+  int tag = -1;     
+  int32_t imm = 0;  
 };
 
 struct PredictInfo {
@@ -212,13 +212,9 @@ struct DispatchBus {
 class ROB;
 class PRF;
 struct CDBBus {
-  bool broadcastValid = false;
-  int broadcastValue = 0;
   bool lsqSetCDB = false;
-  RobTag robTag = 0;
   uint8_t memIndex = 0;
-  static CDBBus build(const CDBOutput &cdbOut, const ROB &ROBModule,
-                      const PRF &PRFModule, const SquashInfo &squashDetect);
+  static CDBBus build(const CDBOutput &cdbOut, const SquashInfo &squashDetect);
 };
 struct BPU;
 struct FetchDecision {

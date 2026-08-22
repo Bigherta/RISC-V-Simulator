@@ -107,7 +107,9 @@ void BRU::tick(const BRUInput &input, systemState &CPUstate) {
   // DispatchArbiter snapshot side; RS slot release is handled by RSUnit.tick)
   if (input.dispatch.valid) {
     auto &rs = input.RSModule.branchRS[input.dispatch.rsIndex];
-    CPUstate.BRUModule.BRUExecute(rs.vj, rs.vk, rs.pc, rs.imm, rs.op,
+    CPUstate.BRUModule.BRUExecute(input.PRFModule.getOperandValue(rs.src1),
+                                  input.PRFModule.getOperandValue(rs.src2),
+                                  rs.pc, rs.imm, rs.op,
                                   input.dispatch.robTag);
   }
   // BRU writeBack

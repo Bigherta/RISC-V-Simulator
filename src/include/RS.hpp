@@ -6,10 +6,8 @@
 struct ReservationStation {
   Operation op;
   bool free;
-  int32_t vj = 0;
-  int32_t vk = 0;
-  int qj = -1;
-  int qk = -1;
+  Operand src1;   // source operand 1: phy tag (or imm constant when tag==-1)
+  Operand src2;   // source operand 2
   RobTag robTag = 0xFF;
   ReservationStation() : free(true) {}
   ReservationStation(Operation type) : op(type), free(true) {}
@@ -31,8 +29,7 @@ struct StoreAddressRS : public AddressRS {
 
 struct StoreValueReservationStation {
   bool free;
-  int32_t vrs2 = 0;
-  int qrs2 = -1;
+  Operand data;   // store data source: phy tag (or imm constant when tag==-1)
   RobTag robTag = 0xFF;
   uint8_t memIndex = 0;
   StoreValueReservationStation() : free(true) {}
@@ -44,22 +41,20 @@ struct BranchReservationStation : public ReservationStation {
   BranchReservationStation() : ReservationStation() {}
   BranchReservationStation(Operation type) : ReservationStation(type) {}
 };
-struct ROB;
+struct PRF;
 struct IssuePacket;
 struct systemState;
 struct RSInput {
   SquashInfo squashDetect;
-  const ROB &ROBModule;
   DispatchBus dispatchBus;
-  CDBBus cdbBus;
   const IssuePacket &issuePacket;
-  RSInput(const ROB &rob, const IssuePacket &pkt)
-      : ROBModule(rob), issuePacket(pkt) {}
+  const PRF &PRFModule;
+  RSInput(const IssuePacket &pkt, const PRF &prf)
+      : issuePacket(pkt), PRFModule(prf) {}
 };
 class RSUnit {
 private:
   friend struct ReorderTester;
-  void broadcast(const RSInput &, systemState &, RobTag robTag, int value);
 
 public:
   ReservationStation integerRS[INTEGERRS_CAP];

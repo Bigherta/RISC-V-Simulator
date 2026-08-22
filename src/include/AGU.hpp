@@ -4,12 +4,14 @@
 #include "common.hpp"
 #include "RS.hpp"
 struct systemState;
+struct PRF;
 struct AGUInput {
   SquashInfo squashDetect;
   const RSUnit &RSModule;
+  const PRF &PRFModule;
   DispatchInfo dispatch;              
-  AGUInput(const RSUnit &rs)
-      : RSModule(rs) {}
+  AGUInput(const RSUnit &rs, const PRF &prf)
+      : RSModule(rs), PRFModule(prf) {}
 };
 class AGU {
   friend struct ReorderTester;

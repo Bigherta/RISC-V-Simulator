@@ -4,13 +4,15 @@
 #include "common.hpp"
 #include "RS.hpp"
 struct systemState;
+struct PRF;
 struct ALUInput {
   SquashInfo squashDetect;
   const RSUnit &RSModule;
+  const PRF &PRFModule;
   CDBOutput cdbOut;
   DispatchInfo dispatch;               
-  ALUInput(const RSUnit &rs)
-      : RSModule(rs) {}
+  ALUInput(const RSUnit &rs, const PRF &prf)
+      : RSModule(rs), PRFModule(prf) {}
 };
 class ALU {
   friend struct ReorderTester;

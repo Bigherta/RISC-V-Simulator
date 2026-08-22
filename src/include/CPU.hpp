@@ -71,17 +71,17 @@ private:
   FetchUnit FetchUnitModule;
   CDBOutput cdbOut;
   IssuePacket issuePacket;
-  AGUInput aguInput{RSModule};
-  ALUInput aluInput{RSModule};
-  BRUInput bruInput{ROBModule, RSModule};
+  AGUInput aguInput{RSModule, PRFModule};
+  ALUInput aluInput{RSModule, PRFModule};
+  BRUInput bruInput{ROBModule, RSModule, PRFModule};
   BPUpdateInput bpInput{BRUModule, ROBModule};
   DMEMInput dmemInput{};
   DecodeInput decodeInput{FQModule, issuePacket};
   LQInput lqInput{AGUModule, RSModule, ROBModule, DMEMModule, SQModule,
                    issuePacket};
-  SQInput sqInput{AGUModule, RSModule, ROBModule, DMEMModule, LQModule,
-                   issuePacket};
-  RSInput rsInput{ROBModule, issuePacket};
+  SQInput sqInput{AGUModule, RSModule, PRFModule, ROBModule, DMEMModule,
+                   LQModule, issuePacket};
+  RSInput rsInput{issuePacket, PRFModule};
   ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
   PRFInput prfInput{LQModule, SQModule, ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};

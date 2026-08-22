@@ -68,7 +68,8 @@ void CPU::comb() {
   bpInput.fetchDecision = fetchDecision;
   cdbOut = CDBArbiter::build(ALUModule, LQModule, squashDetect);
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
-      RSModule, ALUModule, AGUModule, BRUModule, ROBModule, squashDetect);
+      RSModule, ALUModule, AGUModule, BRUModule, ROBModule, PRFModule,
+      squashDetect);
   aguInput.squashDetect = squashDetect;
   aluInput.squashDetect = squashDetect;
   aluInput.cdbOut = cdbOut;
@@ -90,14 +91,14 @@ void CPU::comb() {
   for (int i = 0; i < STORERS_CAP; ++i) {
     lqInput.storeNotifies[i] = StoreNotify{};
     if (!RSModule.storeValueRS[i].free &&
-        RSModule.storeValueRS[i].qrs2 == -1) {
+        PRFModule.isOperandReady(RSModule.storeValueRS[i].data)) {
       auto tag = RSModule.storeValueRS[i].robTag;
       if (!squashDetect.needSquash ||
           (squashDetect.needSquash &&
            ROB::isOlder(tag, squashDetect.SquashTag))) {
         lqInput.storeNotifies[i] = SQModule.planDataForward(
             memSlot(RSModule.storeValueRS[i].memIndex),
-            RSModule.storeValueRS[i].vrs2);
+            PRFModule.getOperandValue(RSModule.storeValueRS[i].data));
       }
     }
   }
@@ -122,14 +123,12 @@ void CPU::comb() {
   flarbInput.squashDetect = squashDetect;
   flarbInput.cdbOut = cdbOut;
   isarbInput.squashDetect = squashDetect;
-  isarbInput.cdbOut = cdbOut;
   issuePacket = IssueArbiter::build(isarbInput);
   bruInput.squashDetect = squashDetect;
   bpInput.squashDetect = squashDetect;
   bpInput.cdbOut = cdbOut;
-  CDBBus cdbBus = CDBBus::build(cdbOut, ROBModule, PRFModule, squashDetect);
+  CDBBus cdbBus = CDBBus::build(cdbOut, squashDetect);
   lqInput.cdbBus = cdbBus;
-  rsInput.cdbBus = cdbBus;
   auto LoadResponse = DMEMModule.LoadReturn(squashDetect);
   lqInput.loadResp = LoadResponse;
 }
@@ -170,9 +169,6 @@ void CPU::run() {
                      ? 100.0 * CPUstate.BPUModule.getBranchCorrect() /
                            CPUstate.BPUModule.getBranchTotal()
                      : 0.0);
-  if (debug::enabled(debug::TOPIC_MDP))
-    debug::print("mdp: violations=%llu\n",
-                 CPUstate.flushArbiter.getLoadViolations());
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &

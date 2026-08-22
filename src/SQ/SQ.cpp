@@ -199,17 +199,18 @@ void SQ::tick(const SQInput &input, systemState &CPUstate) {
   const auto &p = input.issuePacket;
   if (p.valid && p.isStore)
     CPUstate.SQModule.pushStore(p.robTag, p.nBytes);
-  // store value ready: write the value into our own entry (RS owns the slot,
+  // store value ready: write the value from the PRF (RS owns the slot,
   // it frees it in its own tick)
   for (int i = 0; i < STORERS_CAP; ++i) {
     if (!input.RSModule.storeValueRS[i].free &&
-        input.RSModule.storeValueRS[i].qrs2 == -1) {
+        input.PRFModule.isOperandReady(input.RSModule.storeValueRS[i].data)) {
       uint8_t SeqTag = input.RSModule.storeValueRS[i].robTag;
       if (!input.squashDetect.needSquash ||
           (input.squashDetect.needSquash &&
            ROB::isOlder(SeqTag, input.squashDetect.SquashTag))) {
         CPUstate.SQModule.writeValue(
-            input.RSModule.storeValueRS[i].vrs2,
+            input.PRFModule.getOperandValue(
+                input.RSModule.storeValueRS[i].data),
             memSlot(input.RSModule.storeValueRS[i].memIndex));
       }
     }

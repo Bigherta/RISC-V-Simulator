@@ -151,7 +151,6 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
             viol.SquashPC = input.ROBModule.getPC(viol.SquashIndex);
             viol.CkptId = input.ROBModule.getCkptId(viol.SquashIndex);
             CPUstate.flushArbiter.receive(viol);
-            ++CPUstate.flushArbiter.loadViolations;
             violationHandled = true;
           }
         }
@@ -180,22 +179,13 @@ CDBOutput CDBArbiter::build(const ALU &ALUModule, const LQ &LQModule,
   return arbitrate(aluCand, lsqCand, squash);
 }
 
-CDBBus CDBBus::build(const CDBOutput &cdbOut, const ROB &ROBModule,
-                     const PRF &PRFModule, const SquashInfo &squashDetect) {
+CDBBus CDBBus::build(const CDBOutput &cdbOut, const SquashInfo &squashDetect) {
   CDBBus cdbBus{};
   if (cdbOut.valid) {
     auto &r = cdbOut.result;
     bool guard = !squashDetect.needSquash ||
                  ROB::isOlder(r.robTag, squashDetect.SquashTag);
-    bool robOk =
-        !ROBModule.isEmpty() && !ROB::isOlder(r.robTag, ROBModule.getHead());
-    cdbBus.broadcastValid = guard && (!r.isControl || robOk);
-    int newPhy =
-        robOk ? ROBModule.getNewPhy(ROBModule.getIndexByTag(r.robTag)) : -1;
-    cdbBus.broadcastValue =
-        r.isControl ? (newPhy >= 0 ? PRFModule.getValue(newPhy) : 0) : r.value;
     cdbBus.lsqSetCDB = guard && cdbOut.memGranted;
-    cdbBus.robTag = r.robTag;
     cdbBus.memIndex = cdbOut.memIndex;
   }
   return cdbBus;
@@ -251,16 +241,19 @@ CDBOutput CDBArbiter::arbitrate(const CDBCandidate &aluCandidate,
 
 DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
                                        const AGU &AGU, const BRU &BRU,
-                                       const ROB &ROB,
+                                       const ROB &ROB, const PRF &PRF,
                                        const SquashInfo &squash) {
   DispatchBus dispatch;
+  auto opReady = [&PRF](const Operand &op) {
+    return PRF.isOperandReady(op);
+  };
   if (!ALU.isFull()) {
     bool foundAny = false;
     int best = -1;
     uint8_t bestTag = 0;
     for (int i = 0; i < INTEGERRS_CAP; ++i) {
       auto rs = RS.integerRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
+      if (!rs.free && opReady(rs.src1) && opReady(rs.src2)) {
         auto tag = rs.robTag;
         if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
@@ -285,7 +278,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
     RSType bestType = RSType::Load;
     for (int i = 0; i < LOADRS_CAP; ++i) {
       auto rs = RS.loadRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
+      if (!rs.free && opReady(rs.src1) && opReady(rs.src2)) {
         auto tag = rs.robTag;
         if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
@@ -297,7 +290,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
     }
     for (int i = 0; i < STORERS_CAP; ++i) {
       auto rs = RS.storeAddressRS[i];
-      if (!rs.free && rs.qj == -1) {
+      if (!rs.free && opReady(rs.src1)) {
         auto tag = rs.robTag;
         if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;
@@ -322,7 +315,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
     uint8_t bestTag = 0;
     for (int i = 0; i < BRANCHRS_CAP; ++i) {
       auto rs = RS.branchRS[i];
-      if (!rs.free && rs.qj == -1 && rs.qk == -1) {
+      if (!rs.free && opReady(rs.src1) && opReady(rs.src2)) {
         auto tag = rs.robTag;
         if (!foundAny || ROB::isOlder(tag, bestTag)) {
           foundAny = true;

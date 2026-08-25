@@ -82,6 +82,8 @@ bool ROB::isCall(int index) const { return ROBqueue[index].isCall; }
 
 bool ROB::isRet(int index) const { return ROBqueue[index].isRet; }
 
+bool ROB::isIndirect(int index) const { return ROBqueue[index].isIndirect; }
+
 bool ROB::isHeadCommitReady() const {
   return ROBqueue[idx(getHead())].isCommitReady;
 }

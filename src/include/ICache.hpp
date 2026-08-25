@@ -1,5 +1,5 @@
 #pragma once
-#include "FetchQueue.hpp"
+#include "InstructBuffer.hpp"
 #include "IMEM.hpp"
 #include "common.hpp"
 #include <cstdint>

@@ -5,6 +5,50 @@
 #include <cstring>
 #include <iostream>
 
+namespace {
+// Pre-decode scan of a fetched word: classify the unconditional-jump family
+// (jal / jalr) so RAS maintenance and BTB type training no longer depend on
+// prediction-table hits. Conditional branches are deliberately excluded.
+FetchTypeInfo scanJump(const struct lastPush &lp) {
+  FetchTypeInfo fi{};
+  if (!lp.valid)
+    return fi;
+  const uint32_t raw = lp.raw_inst;
+  const uint32_t opcode = raw & 0x7F;
+  const uint32_t rd = (raw >> 7) & 0x1F;
+  const uint32_t rs1 = (raw >> 15) & 0x1F;
+  const uint32_t funct3 = (raw >> 12) & 0x7;
+  // RISC-V RAS hints (unpriv spec 2.5): link registers are x1/ra and x5/t0.
+  const bool rdLink = (rd == 1 || rd == 5);
+  const bool rs1Link = (rs1 == 1 || rs1 == 5);
+  fi.pc = lp.pc;
+  if (opcode == 0x6F) { // jal: direct call iff rd is a link register
+    fi.isCall = rdLink;
+    fi.jalTargetValid = true;
+    uint32_t uoff = ((raw >> 31) & 1U) << 20;         // imm[20]
+    uoff |= ((raw >> 20) & 1U) << 11;                 // imm[11]
+    for (int i = 12; i <= 19; ++i)                    // imm[19:12]
+      uoff |= ((raw >> i) & 1U) << i;
+    for (int i = 21; i <= 30; ++i)                    // imm[10:1]
+      uoff |= ((raw >> i) & 1U) << (i - 20);
+    const auto off =
+        static_cast<int32_t>((uoff ^ 0x100000U) - 0x100000U); // sign-extend
+    fi.jalTarget = static_cast<uint32_t>(static_cast<int32_t>(lp.pc) + off);
+    fi.valid = true;
+  } else if (opcode == 0x67 && funct3 == 0) { // jalr
+    // Indirect call: rd is a link register (push ra), even for non-link rs1
+    // (function-pointer / PLT / vtable calls).
+    // Return: rs1 is a link register and rd is NOT (pop).
+    // Corner case rd-link & rs1-link (coroutine pop+push) folds to push-only
+    // here -- vanishingly rare in compiler output, acceptable for v1.
+    fi.isCall = rdLink;
+    fi.isRet = rs1Link && !rdLink;
+    fi.valid = true;
+  }
+  return fi;
+}
+} // namespace
+
 CPU::CPU(Memory mem)
     : CPUstate(mem), InstructMem(mem), IMEMModule(mem), DMEMModule(mem) {}
 
@@ -65,7 +109,7 @@ void CPU::comb() {
   }
   fqInput.squashDetect = squashDetect;
   fqInput.haltFetched = FetchUnitModule.isHaltFetched();
-  bpInput.fetchDecision = fetchDecision;
+  bpuInput.fetchDecision = fetchDecision;
   cdbOut = CDBArbiter::build(ALUModule, LQModule, squashDetect);
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
       RSModule, ALUModule, AGUModule, BRUModule, ROBModule, PRFModule,
@@ -125,8 +169,9 @@ void CPU::comb() {
   isarbInput.squashDetect = squashDetect;
   issuePacket = IssueArbiter::build(isarbInput);
   bruInput.squashDetect = squashDetect;
-  bpInput.squashDetect = squashDetect;
-  bpInput.cdbOut = cdbOut;
+  bpuInput.squashDetect = squashDetect;
+  bpuInput.cdbOut = cdbOut;
+  bpuInput.fetchInfo = scanJump(FQModule.getLastPush());
   CDBBus cdbBus = CDBBus::build(cdbOut, squashDetect);
   lqInput.cdbBus = cdbBus;
   auto LoadResponse = DMEMModule.LoadReturn(squashDetect);
@@ -149,7 +194,7 @@ void CPU::run() {
     ALUModule.tick(aluInput, CPUstate);
     AGUModule.tick(aguInput, CPUstate);
     BRUModule.tick(bruInput, CPUstate);
-    BPUModule.tick(bpInput, CPUstate);
+    BPUModule.tick(bpuInput, CPUstate);
     DMEMModule.tick(dmemInput, CPUstate);
     RSModule.tick(rsInput, CPUstate);
     RATModule.tick(ratInput, CPUstate);
@@ -169,6 +214,8 @@ void CPU::run() {
                      ? 100.0 * CPUstate.BPUModule.getBranchCorrect() /
                            CPUstate.BPUModule.getBranchTotal()
                      : 0.0);
+  if (debug::enabled(debug::TOPIC_BPMISS))
+    CPUstate.BPUModule.dumpBpMiss();
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &

@@ -4,13 +4,15 @@
 #include "../include/PRF.hpp"
 #include "../include/RAT.hpp"
 #include "../include/ROB.hpp"
+#include <cassert>
 // Resolve an architectural register source into an Operand. RS no longer
 // caches values: register sources store only the phy tag (readiness/read from
 // PRF at dispatch), x0 is a constant zero, and immediates/PC are constants.
 static Operand resolveSrc(const IssueArbiterInput &input, int regNum) {
   auto op = input.RATModule.readOperand(regNum);
   if (op.ready)  // x0: constant zero
-    return {.tag = -1, .imm = op.value};
+    return {.tag = InvalidPhy, .imm = op.value};
+  assert(op.phyRegIndex != InvalidPhy); // P0 is never mapped (P0-dead invariant)
   return {.tag = op.phyRegIndex, .imm = 0};
 }
 
@@ -35,7 +37,7 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   auto destination = inst.rd;
   p.integerRS.src1 = resolveSrc(input, inst.rs1);
   if (imm_as_vk) {
-    p.integerRS.src2 = {.tag = -1, .imm = inst.imm};
+    p.integerRS.src2 = {.tag = InvalidPhy, .imm = inst.imm};
   } else if (has_rs2) {
     p.integerRS.src2 = resolveSrc(input, inst.rs2);
   }
@@ -51,7 +53,7 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
-      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
+      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : InvalidPhy;
   p.robEntry.newPhy = p.phy;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination, p.phy,
@@ -60,6 +62,7 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
     p.isControl = true;
     p.pc = inst.pc;
     p.robEntry.type = ROBType::LINK;
+    p.robEntry.isIndirect = true; // JALR path: target is register-driven
     if (inst.rd == 0 && inst.rs1 == 1 && inst.imm == 0)
       p.robEntry.isRet = true;  // JALR x0, 0(x1): return
   }
@@ -87,9 +90,9 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.integerRS.op = decodeOp(inst);
   auto destination = inst.rd;
   if (has_PC) {
-    p.integerRS.src1 = {.tag = -1, .imm = static_cast<int32_t>(inst.pc)};
+    p.integerRS.src1 = {.tag = InvalidPhy, .imm = static_cast<int32_t>(inst.pc)};
   }
-  p.integerRS.src2 = {.tag = -1, .imm = inst.imm};
+  p.integerRS.src2 = {.tag = InvalidPhy, .imm = inst.imm};
   if (inst.allocDest && !input.PRFModule.isFreeListEmpty()) {
     p.allocDest = true;
     p.phy = input.PRFModule.getFreeListSlot(input.PRFModule.getHeadSeq());
@@ -102,7 +105,7 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.ckptId = inst.ckptId;
   p.robEntry.oldPhy =
-      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
+      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : InvalidPhy;
   p.robEntry.newPhy = p.phy;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
     debug::print("PRF rename x%d <- P%d (old=P%d)\n", destination, p.phy,
@@ -174,7 +177,7 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   auto destination = inst.rd;
 
   p.loadRS.src1 = resolveSrc(input, inst.rs1);
-  p.loadRS.src2 = {.tag = -1, .imm = inst.imm};
+  p.loadRS.src2 = {.tag = InvalidPhy, .imm = inst.imm};
   if (inst.allocDest && !input.PRFModule.isFreeListEmpty()) {
     p.allocDest = true;
     p.phy = input.PRFModule.getFreeListSlot(input.PRFModule.getHeadSeq());
@@ -182,10 +185,13 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.robEntry = ROBEntry(ROBType::REGISTER);
   p.robEntry.dest = destination;
   p.robEntry.pc = inst.pc;
-  p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
+  // Include-self boundary (see LQ::getTailSnapshot): an exclusive snapshot
+  // let a LoadViolation squash -- whose target is the load itself -- rewind
+  // the LQ over its own entry, freezing retirement at that row.
+  p.robEntry.lqtTailSnapshot = input.LQModule.getTailSnapshot();
   p.robEntry.sqTailSnapshot = input.SQModule.getTail();
   p.robEntry.oldPhy =
-      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : -1;
+      inst.allocDest ? input.RATModule.readRAT_PRF(destination) : InvalidPhy;
   p.robEntry.newPhy = p.phy;
   p.robEntry.ckptId = inst.ckptId;
   if (debug::enabled(debug::TOPIC_PRF) && inst.allocDest)
@@ -221,14 +227,16 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
   p.storeAddrRS.op = decodeOp(inst);
 
   p.storeAddrRS.src1 = resolveSrc(input, inst.rs1);
-  p.storeAddrRS.src2 = {.tag = -1, .imm = inst.imm};
+  p.storeAddrRS.src2 = {.tag = InvalidPhy, .imm = inst.imm};
 
   p.storeValueRS.free = false;
   p.storeValueRS.data = resolveSrc(input, inst.rs2);
   p.robEntry = ROBEntry(ROBType::STORE);
   p.robEntry.pc = inst.pc;
+  // Include-self boundary on the SQ side; the store never enters the LQ,
+  // so its lqtTailSnapshot stays the raw tail.
   p.robEntry.lqtTailSnapshot = input.LQModule.getTail();
-  p.robEntry.sqTailSnapshot = input.SQModule.getTail();
+  p.robEntry.sqTailSnapshot = input.SQModule.getTailSnapshot();
   p.robEntry.ckptId = inst.ckptId;
   p.storeAddrRS.robTag = p.robTag;
   p.storeValueRS.robTag = p.robTag;

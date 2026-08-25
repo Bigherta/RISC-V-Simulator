@@ -23,15 +23,26 @@ constexpr int AGU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int PC_Direct_CAP = 1 << 12;
 constexpr int BTB_CAP = 512;
+constexpr int BHT_CAP = 1 << 9;
+constexpr int T0_CAP = 1 << 10;  // local base table, (pc ^ LHT) hashed index
+constexpr int LHT_CAP = 1 << 10; // per-PC local history table, pc[11:2] index
+constexpr int CONDSEEN_CAP = 1 << 10; // "this PC is a conditional" filter
 constexpr int SELECTOR_CAP = 1 << 12;
-constexpr int HISTORY_BIT = 12;
-constexpr int HISTORY_MASK = (1 << HISTORY_BIT) - 1;
-constexpr int LHT_CAP = 1 << 12;
+constexpr uint64_t HISTORY_MASK = ~UINT64_C(0);
+constexpr int SC_CAP = 512; // (unused: statistical corrector removed)
 constexpr int LOCAL_HISTORY_BIT = 8;
-constexpr int LOCAL_PHT_CAP = 1 << LOCAL_HISTORY_BIT;
+constexpr int TARGETCACHE_CAP = 1 << LOCAL_HISTORY_BIT;
 constexpr int RAS_CAP = 16;
 constexpr int ALIGNQ_CAP = 32;
 constexpr int PRF_CAP = 128;
+// Sentinel for "no physical register" across the whole phy-tag domain
+// (RAT entries, freeList empty slots, Operand.tag immediates, ROB
+// oldPhy/newPhy, IssuePacket.phy). Load-bearing invariant: P0 is never
+// allocated (freeList only ever holds 32..PRF_CAP-1) and never mapped
+// (RAT binds x1-x31 at reset; rd==0 never allocates), so real tags are
+// always in 1..127 and 0 is unambiguous. Guarded by asserts in PRF::pop,
+// PRF::push, RAT::setRAT_PRF and IssueArbiter::resolveSrc.
+inline constexpr int InvalidPhy = 0;
 constexpr int IMEM_CAP = 16;
 constexpr int CKPT_CAP = 64;
 constexpr int CACHE_BLOCK_CAP = 16;
@@ -82,20 +93,20 @@ enum class RISC_V {
 
 struct ArithmeticCalculateResult {
   int32_t value;
-  RobTag robTag;
+  uint8_t robTag;
   bool isControl;
 };
 
 struct AddressCalculateResult {
   int32_t value;
-  RobTag robTag;
+  uint8_t robTag;
   uint8_t memIndex;
 };
 
 struct BranchResult {
   int pcFrom;
   int pcResult;
-  RobTag robTag;
+  uint8_t robTag;
 };
 
 struct MemRequest {
@@ -132,8 +143,21 @@ struct CDBOutput {
 };
 
 struct Operand {
-  int tag = -1;     
-  int32_t imm = 0;  
+  int tag = InvalidPhy;
+  int32_t imm = 0;
+};
+
+// Prediction-time metadata for the tagged predictor, captured at fetch
+// and consumed at branch resolution. Carried through PredictInfo /
+// FetchDecision into the BPU-private per-ckptId pool.
+struct TAGESCMeta {
+  bool provValid = false; // a Tn table hit supplied the prediction
+  uint8_t provIdx = 0;    // which table (T1..T4)
+  uint8_t provCtr = 0;    // provider counter value at predict time
+  uint8_t provU = 0;      // provider usefulness at predict time
+  bool altPred = false;   // ALT (T0) direction
+  bool tagePred = false;  // final tagged-predictor direction
+  uint8_t baseCnt = 0;
 };
 
 struct PredictInfo {
@@ -141,8 +165,8 @@ struct PredictInfo {
   int32_t predictPC;
   bool btbHit = false;
   bool unconditional = false;
-  bool isCall = false; // JAL rd==1
-  bool isRet = false;  // JALR x0, 0(x1)
+  bool condSeen = false; // filter says this PC resolved as conditional before
+  TAGESCMeta meta{};
 };
 
 struct BTBEntry {
@@ -152,14 +176,18 @@ struct BTBEntry {
   bool unconditional;
   bool isCall = false;
   bool isRet = false;
+  bool isIndirect = false; // JALR: target history-dependent, TC-eligible
 };
 
 struct BPUSnapshot {
   // SARAS: the checkpoint keeps GHR, AlignQueue head+tail, and RAS_top.
-  // With RASEntry{retPC,times} the height != call/ret depth, so RAS_top
+  // With RASEntry{retPC,times}, the height != call/ret depth, so RAS_top
   // is checkpointed directly. All three are uint8_t — ring counters wrap
   // at 256 (8× ALIGNQ_CAP / 16× RAS_CAP, safe for in-flight <64).
-  uint16_t GHR_snapshot;
+  // The TAGE folded views are NOT checkpointed: they are pure functions
+  // of GHR, so recoverCheckPoint() refolds them from the restored
+  // register instead of carrying a second copy of the truth.
+  uint64_t GHR_snapshot;
   uint8_t alignHead;
   uint8_t alignTail;
   uint8_t RAS_top;
@@ -221,11 +249,10 @@ struct FetchDecision {
   bool valid = false;
   uint32_t pc = 0;
   int32_t predictedPC = 0;
-  bool isCall = false;
-  bool isRet = false;
   bool shift = false;
   bool shiftValue = false;
   uint8_t ckptId = 0;
+  TAGESCMeta meta{};
   static FetchDecision build(const BPU &bp, uint32_t pc,
                              const SquashInfo &squash, bool haltFetched,
                              bool fqFull, bool imemReqFull);
@@ -245,5 +272,9 @@ struct LineReturn {
   bool valid = false;
   uint32_t lineAddr = 0;
   uint32_t data[4] = {0, 0, 0, 0};
+};
+struct FetchTypeInfo {
+  bool valid, isCall, isRet, jalTargetValid;
+  uint32_t pc, jalTarget;
 };
 #endif // COMMON_HPP

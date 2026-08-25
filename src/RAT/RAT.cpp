@@ -1,15 +1,17 @@
 #include "../include/RAT.hpp"
 #include "../include/CPU.hpp"
+#include <cassert>
 
 int RAT::readRAT_PRF(int regNum) const { return RAT_PRF[regNum]; }
 
 void RAT::setRAT_PRF(int regNum, int PRF_id) {
+  assert(PRF_id != InvalidPhy); // P0-dead invariant: mappings are real registers
   RAT_PRF[regNum] = PRF_id;
 }
 
 OperandInfo RAT::readOperand(int regNum) const {
   if (regNum == 0)
-    return {true, 0, -1};
+    return {true, 0, InvalidPhy};
   int phy = RAT_PRF[regNum];
   return {false, 0, phy};
 }

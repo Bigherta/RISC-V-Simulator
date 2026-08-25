@@ -36,7 +36,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── AGU.hpp / ALU.hpp      # 地址计算 / 算术逻辑执行单元（含输出缓冲）
 │   │   ├── Arbiter.hpp            # FlushArbiter（squash 仲裁）+ CDB / Dispatch 组合求值
 │   │   ├── BRU.hpp                # 分支执行单元（含输出缓冲）
-│   │   ├── BranchPredictor.hpp    # Tournament 分支预测器（LHT + gshare + selector + BTB + RAS）
+│   │   ├── BranchPredictor.hpp    # TAGE 分支预测器（bimodal 基表 T0 + 4 标签表 + BTB/TargetCache + SARAS RAS）
 │   │   ├── Decoder.hpp            # 译码器 + 指令队列 IQ
 │   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与整行突发）
 │   │   ├── FetchQueue.hpp         # 取指队列 FQ
@@ -238,58 +238,68 @@ done
 
 ### 6.1 分支预测器配置
 
-Tournament 混合预测器（方向预测与目标预测**按控制流类型拆分**，RAS 启用 `times` 合并）：
+TAGE 混合预测器（方向预测 TAGE 化；目标预测按控制流类型拆分，RAS 启用 `times` 合并）：
 
 | 部件 | 配置 |
 |------|------|
-| Local（LHT + PHT） | 4096 条目 LHT（每分支 8 位历史），256 个 2-bit 饱和计数器按历史模式索引 |
-| Global（gshare） | 12 位全局历史 GHR，4096 条目 2-bit 饱和计数器，按 `PC ^ GHR` 索引 |
-| 选择器 selector | 4096 个 2-bit 饱和计数器，仲裁 local / global |
-| BTB | 512 条目，预测 taken 时给出目标地址 |
+| 基表 T0（局部二级） | 1024 条目 2-bit 饱和计数器；索引 = `PC ⊕ LHT[PC]`，LHT 为 1024 条目 × **12-bit 每 PC 局部历史**（非推测更新）。纯 bimodal 回退会漏掉全局历史看不到的单 PC 模式（交织流稀释 4–6 倍），局部化后 pi −1.38M cycles、superloop −35k |
+| condSeen 过滤器 | 1024×1bit（`pc[11:2]` 索引）：条件分支解析时置位；取指侧 `btbHit ∨ condSeen` 即移位 GHR——消除"从未 taken 的分支不留历史、BTB 驻留漂移改变历史成员"两类缺口（仅 branch 进过滤，JAL/JALR 不进：恒跳走 BTB 身份路径） |
+| 标签表 T1–T4 | 4 表，历史长度 {6, 12, 24, 48}（64 位全局 GHR 按 Seznec 折叠视图消费），每表 1024 条目 × 8-bit tag；索引 = 折叠历史 ⊕ `pc[11:2]`，tag = 两条不同宽度折叠视图 ⊕ `pc` |
+| TageEntry | `{valid, tag(8b), ctr(3b), u(2b)}`；provider 取**最长命中的历史表**，alt 取次长命中（无次命中时回退 T0） |
+| useAltOnNa | 128 条目 4-bit 计数器（`pc[8:2]` 索引，初值 8 弱偏 alt）：provider 处于弱计数（ctr==3/4）时学习"此 PC 改用 alt 是否更准" |
+| 分配与老化 | 误预测时自 provider+1 起用 8-bit Galois LFSR（taps `0xB8`）彩票在 `u==0` 行中挑表分配；**免分配守卫**：alt 已答对且 provider 强计数（ctr≤1/≥6）时跳过分配（此类分配多为别名噪声，只会冲刷有用行）；无空位则对候选行 u 衰减；每 64 次更新 bankTick 全表 `u >>= 1`（减半而非清零，强表项可活过两轮大赦） |
+| 元数据传递 | `TAGESCMeta{provIdx, provCtr, provU, altPred, tagePred, baseCnt}` 随 `PredictInfo → FetchDecision` 进入 BPU 私有 per-ckptId 池（`CKPT_CAP ≥ ROB_CAP` 有 static_assert 守护），分支解析时消费；折叠视图**不做 checkpoint**——它们是 GHR 快照的纯函数，恢复时重算即可 |
+| BTB | 512 条目，taken 时给出目标地址 |
+| Target Cache（间接跳转） | JALR 专用：512×8b 提交级局部历史 BHR + 256 条目目标缓存，按 `pc ^ BHR` 哈希，区分同一静态间接跳转在不同动态上下文下的不同目标 |
 | RAS | 16 条目 `RASEntry{retPC,times}`，同返回地址递归共用一条目（times 计数） |
-| SARAS | 16 条目 `AlignQueue{addr,index,times}` + checkpoint 存 `GHR/alignHead/alignTail/RAS_top`（`BPUSnapshot` 5B，`CKPT_CAP=64`，`uint8` 环绕） |
-| direction-split | **B 类条件分支**：方向表（LHT/gshare/selector）+ BTB；**JAL/JALR**：只更新 BTB（`unconditional` 恒 taken），方向表永不被恒跳指令污染 |
+| SARAS | 16 条目 `AlignQueue{addr,index,times}` + checkpoint 存 `GHR/alignHead/alignTail/RAS_top`（`CKPT_CAP=64`，uint8 环绕） |
+| direction-split | **B 类条件分支**：方向走 TAGE（T0+T1..T4）、目标走 BTB；**JAL/JALR**：只更新 BTB/TargetCache，方向表永不被恒跳指令污染 |
 
 > 设计说明：训练在 `BPUpdateArbiter` 单点原子完成（BRU 候选 → CDB 候选固定序，
 > 任意阶段乱序等价）；GHR 在**发请求时**随预测移位、误预测时由 ROB 条目的
 > checkpoint 快照恢复（`recoverCheckPoint`，含 `RAS_top`）；RAS 随 call/ret 预测 push/pop 维护
 > （dedup 时 `times++`、RET 时 `times--` 或 pop，`AlignQueue` 记录 `{addr,index,times}` 供 flush 撤销；
 > 栈顶 peek 已禁用——错误路径污染，见 `docs/硬件行为差异.md` §3.27）。
+> Statistical Corrector 曾试装后移除（简化版全线退化，见 `src/BPU/BPU.cpp` 内注释）；
+> T5@64 加表与 LHT/T0 缩容（8b/256 条）两个变体经实测劣于现状已否决（详见 AGENTS.md 变更记录）。
 
 ### 6.2 逐测试点结果
 
 | 测试点 | x10（返回值） | 时钟周期数 | 分支正确/总数 | 准确率 | 耗时 | 结果 |
 |--------|:---:|-----------:|--------------:|-------:|-----:|:----:|
-| array_test1 | 123 | 362 | 22/47 | 46.81% | 0.03s | OK |
-| array_test2 | 43 | 373 | 31/53 | 58.49% | 0.03s | OK |
-| basicopt1 | 88 | 634,754 | 180,078/199,517 | 90.26% | 2.01s | OK |
-| bulgarian | 159 | 373,258 | 89,849/93,923 | 95.66% | 1.47s | OK |
-| expr | 58 | 890 | 95/133 | 71.43% | 0.03s | OK |
-| gcd | 178 | 925 | 115/188 | 61.17% | 0.03s | OK |
-| hanoi | 20 | 217,966 | 25,837/29,238 | 88.37% | 0.86s | OK |
+| array_test1 | 123 | 356 | 22/46 | 47.83% | 0.03s | OK |
+| array_test2 | 43 | 393 | 27/52 | 51.92% | 0.03s | OK |
+| basicopt1 | 88 | 533,032 | 189,971/190,923 | 99.50% | 3.31s | OK |
+| bulgarian | 159 | 369,207 | 91,426/94,018 | 97.24% | 2.63s | OK |
+| expr | 58 | 1,018 | 76/134 | 56.72% | 0.04s | OK |
+| gcd | 178 | 885 | 114/182 | 62.64% | 0.03s | OK |
+| hanoi | 20 | 176,334 | 28,101/28,369 | 99.06% | 1.29s | OK |
 | lvalue2 | 175 | 141 | 8/18 | 44.44% | 0.03s | OK |
-| magic | 106 | 789,993 | 92,006/105,852 | 86.92% | 3.04s | OK |
+| magic | 106 | 776,893 | 92,404/103,765 | 89.05% | 5.51s | OK |
 | manyarguments | 40 | 149 | 10/20 | 50.00% | 0.03s | OK |
-| multiarray | 115 | 1,849 | 229/279 | 82.08% | 0.03s | OK |
-| naive | 94 | 73 | 0/4 | 0.00% | 0.02s | OK |
-| pi | 137 | 142,123,832 | 36,165,143/42,975,114 | 84.15% | 489.82s | OK |
-| qsort | 105 | 1,332,296 | 267,385/276,586 | 96.67% | 4.42s | OK |
-| queens | 171 | 892,496 | 85,915/106,237 | 80.87% | 3.37s | OK |
-| statement_test | 50 | 1,697 | 181/286 | 63.29% | 0.03s | OK |
-| superloop | 134 | 576,952 | 443,893/453,799 | 97.82% | 1.69s | OK |
-| tak | 186 | 1,961,070 | 201,778/222,949 | 90.50% | 8.22s | OK |
-| **TOTAL**| — | **148,909,075** | **37,552,575/44,464,243** | **84.46%** | — | **18/18** |
+| multiarray | 115 | 2,046 | 203/280 | 72.50% | 0.04s | OK |
+| naive | 94 | 73 | 0/4 | 0.00% | 0.03s | OK |
+| pi | 137 | 137,402,603 | 37,061,463/43,099,639 | 85.99% | 1572.60s | OK |
+| qsort | 105 | 1,226,401 | 266,924/269,542 | 99.03% | 5.09s | OK |
+| queens | 171 | 843,006 | 90,408/104,295 | 86.68% | 3.67s | OK |
+| statement_test | 50 | 1,700 | 183/286 | 63.99% | 0.04s | OK |
+| superloop | 134 | 636,516 | 439,902/460,318 | 95.56% | 2.52s | OK |
+| tak | 186 | 1,967,097 | 194,112/202,649 | 95.79% | 11.43s | OK |
+| **TOTAL**| — | **143,937,850** | **38,455,354/44,554,540** | **86.31%** | — | **18/18** |
 
 > 说明：`naive` 只有 4 次条件分支且属于基本不可预测的模式，正确率 0% 属正常；
-> `array_test1` 等小测试点分支基数小，正确率波动大，参考大测试点（qsort / superloop
-> 均 ≥ 96%）为准。周期数只要求与 golden 尽力对齐，不硬性一致。
+> `array_test1` 等小测试点分支基数小，正确率波动大，参考大测试点（basicopt1
+> 99.50%、hanoi 99.06%、qsort 99.03%）为准。周期数只要求与 golden 尽力对齐，
+> 不硬性一致。pi 的剩余误预测 ~86% 集中在软件除法子程序的数据相关分支
+> （RV32I 无 M 扩展，`/` `%` 走 libgcc `__udivsi3` 的商位判定），属历史窗口外的
+> 熵墙；RAS 侧已用预译码（Pre-decode）修复冷启动漏栈问题（详见 AGENTS.md 变更记录）。
 
 
 ### 6.3 复现
 
 ```bash
 cmake -S . -B build && cmake --build build   # 生成 ./code
-./test.sh                                    # 全量测试（pi 约 8 分钟）
+./test.sh                                    # 全量测试（pi 约 9.5 分钟）
 ```
 
 ---

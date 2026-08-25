@@ -6,7 +6,7 @@
 struct ReservationStation {
   Operation op;
   bool free;
-  Operand src1;   // source operand 1: phy tag (or imm constant when tag==-1)
+  Operand src1;   // source operand 1: phy tag (or imm constant when tag==InvalidPhy)
   Operand src2;   // source operand 2
   RobTag robTag = 0xFF;
   ReservationStation() : free(true) {}
@@ -29,7 +29,7 @@ struct StoreAddressRS : public AddressRS {
 
 struct StoreValueReservationStation {
   bool free;
-  Operand data;   // store data source: phy tag (or imm constant when tag==-1)
+  Operand data;   // store data source: phy tag (or imm constant when tag==InvalidPhy)
   RobTag robTag = 0xFF;
   uint8_t memIndex = 0;
   StoreValueReservationStation() : free(true) {}

@@ -21,11 +21,12 @@ struct ROBEntry {
   bool halt = false;
   bool isCall = false; // JAL rd==1
   bool isRet = false;  // JALR x0, 0(x1)
+  bool isIndirect = false; // JALR variant: target from reg, not static imm
   uint8_t lqtTailSnapshot = 0;
   uint8_t sqTailSnapshot = 0;
   uint8_t ckptId = 0;
-  int newPhy = -1;
-  int oldPhy = -1;
+  int newPhy = InvalidPhy; // InvalidPhy = instruction allocates no destination
+  int oldPhy = InvalidPhy; // InvalidPhy = no mapping to free on commit
 };
 struct IssuePacket;
 struct ROBInput {
@@ -82,5 +83,6 @@ public:
   int getOldPhy(int index) const;
   bool isCall(int index) const;
   bool isRet(int index) const;
+  bool isIndirect(int index) const;
   void tick(const ROBInput &, systemState &);
 };

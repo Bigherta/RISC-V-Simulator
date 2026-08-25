@@ -30,7 +30,8 @@ private:
 
 public:
   RAT() {
-    std::memset(RAT_PRF, 0xFF, sizeof(RAT_PRF));
+    // InvalidPhy (=0) = unmapped; x0 is never renamed, P1-P31 bind to Px at reset
+    std::memset(RAT_PRF, 0, sizeof(RAT_PRF));
     for (int i = 1; i < 32; i++)
       RAT_PRF[i] = i;
   }

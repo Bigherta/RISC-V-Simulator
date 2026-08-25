@@ -9,7 +9,7 @@
 #include "BPU.hpp"
 #include "DMEM.hpp"
 #include "Decoder.hpp"
-#include "FetchQueue.hpp"
+#include "InstructBuffer.hpp"
 #include "FetchUnit.hpp"
 #include "ICache.hpp"
 #include "IMEM.hpp"
@@ -32,7 +32,7 @@ struct systemState {
   BRU BRUModule;
   LQ LQModule;
   SQ SQModule;
-  FetchQueue FQModule;
+  InstructBuffer FQModule;
   ICache ICacheModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
@@ -60,7 +60,7 @@ private:
   BRU BRUModule;
   LQ LQModule;
   SQ SQModule;
-  FetchQueue FQModule;
+  InstructBuffer FQModule;
   ICache ICacheModule;
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
@@ -74,7 +74,7 @@ private:
   AGUInput aguInput{RSModule, PRFModule};
   ALUInput aluInput{RSModule, PRFModule};
   BRUInput bruInput{ROBModule, RSModule, PRFModule};
-  BPUpdateInput bpInput{BRUModule, ROBModule};
+  BPUInput bpuInput{BRUModule, ROBModule};
   DMEMInput dmemInput{};
   DecodeInput decodeInput{FQModule, issuePacket};
   LQInput lqInput{AGUModule, RSModule, ROBModule, DMEMModule, SQModule,

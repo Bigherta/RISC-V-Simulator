@@ -1,5 +1,5 @@
 #pragma once
-#include "FetchQueue.hpp"
+#include "InstructBuffer.hpp"
 #include "common.hpp"
 #include <cstdint>
 class Decoder {
@@ -10,11 +10,11 @@ public:
   }
 };
 
-class InstructQueue {
+class UopQueue {
   friend struct ReorderTester;
 
 private:
-  Uop instructQueueEntries[IQ_CAP];
+  Uop uopQueueEntries[IQ_CAP];
   uint8_t head = 0;
   uint8_t tail = 0;
 
@@ -22,21 +22,21 @@ public:
   bool isEmpty() const;
   bool isFull() const;
   void push(Uop inst);
-  RISC_V headType() const { return instructQueueEntries[head].type; }
-  int headOpcode() const { return instructQueueEntries[head].opcode; }
-  int headFunct3() const { return instructQueueEntries[head].funct3; }
-  int headFunct7() const { return instructQueueEntries[head].funct7; }
-  int headRd() const { return instructQueueEntries[head].rd; }
-  int headRs1() const { return instructQueueEntries[head].rs1; }
-  int headRs2() const { return instructQueueEntries[head].rs2; }
-  int32_t headImm() const { return instructQueueEntries[head].imm; }
-  uint32_t headPc() const { return instructQueueEntries[head].pc; }
-  bool headIsHalt() const { return instructQueueEntries[head].isHalt; }
-  bool headAllocDest() const { return instructQueueEntries[head].allocDest; }
+  RISC_V headType() const { return uopQueueEntries[head].type; }
+  int headOpcode() const { return uopQueueEntries[head].opcode; }
+  int headFunct3() const { return uopQueueEntries[head].funct3; }
+  int headFunct7() const { return uopQueueEntries[head].funct7; }
+  int headRd() const { return uopQueueEntries[head].rd; }
+  int headRs1() const { return uopQueueEntries[head].rs1; }
+  int headRs2() const { return uopQueueEntries[head].rs2; }
+  int32_t headImm() const { return uopQueueEntries[head].imm; }
+  uint32_t headPc() const { return uopQueueEntries[head].pc; }
+  bool headIsHalt() const { return uopQueueEntries[head].isHalt; }
+  bool headAllocDest() const { return uopQueueEntries[head].allocDest; }
   int32_t headPredictedPC() const {
-    return instructQueueEntries[head].predictedPC;
+    return uopQueueEntries[head].predictedPC;
   }
-  uint8_t headCkptId() const { return instructQueueEntries[head].ckptId; }
+  uint8_t headCkptId() const { return uopQueueEntries[head].ckptId; }
   void pop();
   uint8_t getHead() const;
   uint8_t getTail() const;
@@ -45,9 +45,9 @@ public:
 struct IssuePacket;
 struct DecodeInput {
   SquashInfo squashDetect;
-  const FetchQueue &FQModule;
+  const InstructBuffer &FQModule;
   const IssuePacket &issuePacket;
-  DecodeInput(const FetchQueue &fq, const IssuePacket &pkt)
+  DecodeInput(const InstructBuffer &fq, const IssuePacket &pkt)
       : FQModule(fq), issuePacket(pkt) {}
 };
 struct systemState;
@@ -55,7 +55,7 @@ class DecodeUnit {
   friend struct ReorderTester;
 
 private:
-  InstructQueue iq;
+  UopQueue iq;
   void push(Uop inst) { iq.push(inst); }
   void pop() { iq.pop(); }
   void clear() { iq.clear(); }

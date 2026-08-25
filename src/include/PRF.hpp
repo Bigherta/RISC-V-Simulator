@@ -42,14 +42,16 @@ public:
   }
   bool isReady(int index) const;
   int32_t getValue(int index) const;
-  // Operand resolves either a physical register (tag >= 0) or an immediate
-  // constant (tag == -1, value in imm). RS entries no longer cache values;
-  // readiness and value come straight from the PRF / the constant.
+  // Operand resolves either a physical register (tag != InvalidPhy) or an
+  // immediate constant (tag == InvalidPhy, value in imm). RS entries no longer
+  // cache values; readiness and value come straight from the PRF / the
+  // constant. Sentinel relies on the P0-dead invariant: real tags are
+  // always 1..PRF_CAP-1, never 0.
   bool isOperandReady(const Operand &op) const {
-    return op.tag == -1 || isReady(op.tag);
+    return op.tag == InvalidPhy || isReady(op.tag);
   }
   int32_t getOperandValue(const Operand &op) const {
-    return op.tag == -1 ? op.imm : getValue(op.tag);
+    return op.tag == InvalidPhy ? op.imm : getValue(op.tag);
   }
   uint32_t head() const { return headSeq & (PRF_CAP - 1); }
   uint32_t tail() const { return tailSeq & (PRF_CAP - 1); }

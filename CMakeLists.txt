@@ -21,7 +21,7 @@ set(CPU_SOURCES
     src/LQ/LQ.cpp
     src/SQ/SQ.cpp
     src/RAT/RAT.cpp
-    src/FetchQueue/FetchQueue.cpp
+    src/InstructBuffer/InstructBuffer.cpp
     src/BPU/BPU.cpp
     src/PRF/PRF.cpp
 )

@@ -2,21 +2,33 @@
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
+constexpr int TAGE_NTABLES = 4;
+constexpr int TAGE_HIST[TAGE_NTABLES] = {6, 12, 24, 48};
+constexpr int TAGE_IDX_BIT = 10; // 1024 entries per table
+constexpr int TAGE_TAG_BIT = 8;
+constexpr uint8_t BANKTICK_MAX = 63;
+constexpr uint8_t LFSR_TAPS = 0xB8; // 8-bit Galois taps
+constexpr uint8_t LFSR_SEED = 0xAC;
+// The per-ckptId metadata pool must outlive every in-flight branch's
+// resolve; ids are consumed one per fetch and at most ROB_CAP
+// instructions can be in flight, so equal capacities guarantee no id is
+// recycled before its meta is consumed.
+static_assert(CKPT_CAP >= ROB_CAP, "ckpt pool too small for ROB window");
 struct BRU;
 struct ROB;
 struct systemState;
-
 // BP update arbitration input: both table-training sources (BRU branch results
 // and CDB JAL/JALR transfers) converge to this single point so that the two
 // update calls keep a fixed order (BRU candidate first) regardless of stage
 // scheduling order.
-struct BPUpdateInput {
+struct BPUInput {
   const BRU &BRUModule;
   CDBOutput cdbOut;
   const ROB &ROBModule;
   SquashInfo squashDetect;
   FetchDecision fetchDecision;
-  BPUpdateInput(const BRU &bru, const ROB &rob)
+  FetchTypeInfo fetchInfo;
+  BPUInput(const BRU &bru, const ROB &rob)
       : BRUModule(bru), ROBModule(rob) {}
 };
 
@@ -34,6 +46,63 @@ struct RASEntry {
   uint32_t retPC;
   uint32_t times;
 };
+// One row of a tagged prediction table (Tn). The stored tag is a snapshot
+// of (folded history ^ pc) captured at allocation time; a probe recomputes
+// it from the live FoldHist views and compares. u is a 2-bit usefulness
+// counter (Seznec-canonical; deliberately wider than Kunminghu's 1 bit) so
+// the periodic bankTick reset halves instead of clears, letting strong
+// entries survive two amnesty rounds. Allocation only targets rows with
+// u == 0.
+struct TageEntry {
+  bool valid = false;
+  uint8_t tag = 0; // 8b context snapshot
+  uint8_t ctr = 0; // 3b saturating direction counter
+  uint8_t u = 0;   // 2b usefulness
+};
+
+// Direction prediction ("taken or not"): the tagged tables T1..Tn keyed off
+// the speculative global GHR, plus a local-history two-level base: T0 stays
+// a 2b-counter table but is indexed by PC ^ (12b per-PC local history), so
+// the always-available fallback tracks single-PC patterns that global
+// history cannot see (interleaved streams dilute them 4-6x; an 8b/256-entry
+// variant measured +1.17M cycles on pi and was rejected). Kept
+// self-contained so it can be swapped wholesale for TAGE-SC later without
+// touching target prediction.
+struct DirectionPred {
+  uint8_t t0[T0_CAP] = {};
+  uint16_t LHT[LHT_CAP] = {}; // per-PC local history (12b), non-speculative
+  TageEntry tn[TAGE_NTABLES][1024];
+  uint8_t useAltOnNa[128]; // ctor memset 0b1000
+  TAGESCMeta tmeta[CKPT_CAP];
+  uint64_t GHR = 0;
+  uint8_t bankTickCtr = 0;
+  uint8_t lfsr = LFSR_SEED;
+  DirectionPred() {
+    std::memset(t0, 1, sizeof(t0));
+    std::memset(useAltOnNa, 8, sizeof(useAltOnNa)); // 0b1000: weakly prefer alt
+  }
+};
+
+// Target prediction ("where to jump"): BTB (targets + jump type) and the
+// SARAS ring return-address stack with its correction queue. All three
+// ring counters are uint8_t and wrap at 256 (safe: in-flight <64, and
+// ALIGNQ_CAP=32/RAS_CAP=16).
+struct TargetPred {
+  uint8_t BHT[BHT_CAP] = {};
+  uint32_t TargetCache[TARGETCACHE_CAP] = {};
+  bool TargetValid[TARGETCACHE_CAP] = {};
+  BTBEntry BTB[BTB_CAP] = {};
+  RASEntry RAS[RAS_CAP] = {};
+  uint8_t RAS_top = 0; // ring write pointer (wraps at 256)
+  AlignEntry alignQueue[ALIGNQ_CAP] = {};
+  uint8_t alignHead = 0; // AlignQueue head (advanced at commit)
+  uint8_t alignTail = 0; // AlignQueue tail (appended on CALL-dedup / RET)
+  // Branch-type filter: set when a PC resolves as a conditional (taken or
+  // not). Lets the fetch stage shift the GHR for conditionals that are not
+  // BTB-resident (never-taken branches never train the BTB), so history
+  // membership stops depending on BTB residency churn.
+  bool condSeen[CONDSEEN_CAP] = {};
+};
 
 class BPU {
 private:
@@ -42,46 +111,43 @@ private:
     int32_t pc = 0;
     bool taken = false;
     int32_t target = 0;
-    uint16_t ghr = 0;
+    uint64_t ghr = 0;
     bool cond = true;
     bool isCall = false;
     bool isRet = false;
+    bool isIndirect = false;
+    TAGESCMeta meta{};
   };
-  uint8_t globalPHT[PC_Direct_CAP] = {};
-  uint8_t LHT[LHT_CAP] = {};
-  uint8_t localPHT[LOCAL_PHT_CAP] = {};
-  uint8_t selector[SELECTOR_CAP] = {};
-  BTBEntry BTB[BTB_CAP] = {};
-  // SARAS: ring return-address stack (RAS) with per-entry recursion
-  // counter (times) + correction queue (AlignQueue). All three ring
-  // counters are uint8_t and wrap at 256 (safe: in-flight <64, and
-  // ALIGNQ_CAP=32/RAS_CAP=16).
-  RASEntry RAS[RAS_CAP] = {};
-  uint8_t RAS_top = 0; // ring write pointer (wraps at 256)
-  AlignEntry alignQueue[ALIGNQ_CAP] = {};
-  uint8_t alignHead = 0; // AlignQueue head (advanced at commit)
-  uint8_t alignTail = 0; // AlignQueue tail (appended on CALL-dedup / RET)
-  uint16_t GHR = 0;
+  DirectionPred dir;
+  TargetPred tgt;
   BPUSnapshot bpCkpt[CKPT_CAP] = {};
   uint8_t nextCkptId = 0;
   uint64_t branchTotal = 0;
   uint64_t branchCorrect = 0;
-  void update(int32_t pc, bool taken, int32_t target, uint16_t ghr);
-  void updateJump(int32_t pc, int32_t target, bool isCall, bool isRet);
+  // Debug-only per-PC misprediction counters (direct-mapped by pc[11:2]).
+  // Synthesis strips these along with the VERBOSE topic.
+  uint64_t missCnt[BTB_CAP] = {};
+  uint32_t missPC[BTB_CAP] = {}; // sample PC per slot (last writer wins)
+  void noteMiss(uint32_t pc) {
+    const auto i = (pc >> 2) & (BTB_CAP - 1);
+    ++missCnt[i];
+    missPC[i] = pc;
+  }
+
+  void update(int32_t pc, bool taken, int32_t target, uint64_t ghr,
+              const TAGESCMeta &meta);
+  void updateJump(int32_t pc, int32_t target, bool isCall, bool isRet,
+                  bool isIndirect);
   void shiftGHR(bool taken);
 
 public:
-  BPU() {
-    std::memset(globalPHT, 1, sizeof(globalPHT));
-    std::memset(localPHT, 1, sizeof(localPHT));
-    std::memset(selector, 1, sizeof(selector));
-  }
   uint64_t getBranchTotal() const { return branchTotal; }
   uint64_t getBranchCorrect() const { return branchCorrect; }
+  void dumpBpMiss() const;
   PredictInfo predict(int32_t pc) const;
 
   BPUSnapshot snapshotCheckPoint() const;
   void recoverCheckPoint(const BPUSnapshot &);
   uint8_t getNextCkptId() const { return nextCkptId; }
-  void tick(const BPUpdateInput &, systemState &);
+  void tick(const BPUInput &, systemState &);
 };

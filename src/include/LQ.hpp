@@ -61,6 +61,11 @@ public:
   bool isActive(uint8_t index) const;
   uint8_t getHead() const;
   uint8_t getTail() const;
+  // Occupancy boundary AFTER this cycle's own enqueue (the caller pushes
+  // exactly one entry at [tail] later this cycle). Distinct from the raw
+  // tail: memIndex wants "my slot" (= old tail), squash snapshots want
+  // "the border that keeps me alive" (= old tail + 1).
+  uint8_t getTailSnapshot() const { return (tail + 1) & 0x0F; }
   bool isReadyToCommit(int index) const;
   auto getAddress(int index) const -> uint32_t;
   auto getValue(int index) const -> int32_t;

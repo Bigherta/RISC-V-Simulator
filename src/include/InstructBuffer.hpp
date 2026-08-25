@@ -2,7 +2,7 @@
 #include "common.hpp"
 #include <cstdint>
 #include <cstring>
-struct FetchQueueEntry {
+struct InstructBufferEntry {
   uint32_t raw;
   int pc;
   int32_t predictedPC;
@@ -18,12 +18,18 @@ struct FQInput {
   FQInput(const ICache &icache, const DecodeUnit &du)
       : ICacheModule(icache), DecodeUnitModule(du) {}
 };
+struct lastPush {
+  bool valid = false;
+  uint32_t raw_inst;
+  uint32_t pc;
+};
 struct systemState;
-class FetchQueue {
+class InstructBuffer {
   friend struct ReorderTester;
 
 private:
-  FetchQueueEntry FetchQueueEntries[FQ_CAP];
+  InstructBufferEntry InstructBufferEntries[FQ_CAP];
+  lastPush pushCache;
   uint8_t head = 0;
   uint8_t tail = 0;
   void push(uint32_t raw, int pc, int32_t predictedPC, uint8_t ckptId);
@@ -31,7 +37,7 @@ private:
   void clear();
 
 public:
-  FetchQueue() { std::memset(this, 0, sizeof(*this)); }
+  InstructBuffer() { std::memset(this, 0, sizeof(*this)); }
   bool isFull() const;
   bool isEmpty() const;
   uint32_t headRaw() const;
@@ -40,5 +46,6 @@ public:
   uint8_t headCkptId() const;
   uint8_t getHead() const;
   uint8_t getTail() const;
+  lastPush getLastPush() const { return pushCache; }
   void tick(const FQInput &, systemState &);
 };

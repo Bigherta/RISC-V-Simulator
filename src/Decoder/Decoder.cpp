@@ -94,24 +94,24 @@ Uop Decoder::decode(int32_t raw_inst) {
   return inst;
 }
 
-bool InstructQueue::isEmpty() const { return head == tail; }
+bool UopQueue::isEmpty() const { return head == tail; }
 
-bool InstructQueue::isFull() const { return ((tail + 1) & (IQ_CAP - 1)) == head; }
+bool UopQueue::isFull() const { return ((tail + 1) & (IQ_CAP - 1)) == head; }
 
-void InstructQueue::push(Uop inst){
-  instructQueueEntries[tail] = inst;
+void UopQueue::push(Uop inst){
+  uopQueueEntries[tail] = inst;
   tail = (tail + 1) & (IQ_CAP - 1);
 }
-void InstructQueue::pop(){
+void UopQueue::pop(){
   head = (head + 1) & (IQ_CAP - 1);
 }
-uint8_t InstructQueue::getHead() const{
+uint8_t UopQueue::getHead() const{
   return head;
 }
-uint8_t InstructQueue::getTail() const{
+uint8_t UopQueue::getTail() const{
   return tail;
 }
-void InstructQueue::clear(){
+void UopQueue::clear(){
   std::memset(this, 0, sizeof(*this));
   head = tail = 0;
 }

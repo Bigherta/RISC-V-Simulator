@@ -478,26 +478,28 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
     }
     // Early BTB type/target training: jal carries its static target in the
     // encoding, so direct calls become perfectly predicted from their second
-    // encounter without waiting for a resolve.
+    // encounter without waiting for a resolve. Writes MUST go to
+    // CPUstate.BPUModule (the committed state): tick() executes on the
+    // comb-snapshot copy, and bare tgt writes here never persisted.
     if (fi.isCall || (!fi.isCall && !fi.isRet)) {
       auto BTB_index = (fi.pc >> 2) & (BTB_CAP - 1);
-      tgt.BTB[BTB_index].actualPC = fi.pc;
-      tgt.BTB[BTB_index].valid = true;
-      tgt.BTB[BTB_index].unconditional = true;
-      tgt.BTB[BTB_index].isCall = fi.isCall;
-      tgt.BTB[BTB_index].isRet = false;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].actualPC = fi.pc;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].valid = true;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].unconditional = true;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].isCall = fi.isCall;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].isRet = false;
       if (fi.jalTargetValid)
-        tgt.BTB[BTB_index].target = fi.jalTarget;
+        CPUstate.BPUModule.tgt.BTB[BTB_index].target = fi.jalTarget;
       else
-        tgt.BTB[BTB_index].isIndirect = true;
+        CPUstate.BPUModule.tgt.BTB[BTB_index].isIndirect = true;
     }
     if (fi.isRet) {
       auto BTB_index = (fi.pc >> 2) & (BTB_CAP - 1);
-      tgt.BTB[BTB_index].actualPC = fi.pc;
-      tgt.BTB[BTB_index].valid = true;
-      tgt.BTB[BTB_index].unconditional = true;
-      tgt.BTB[BTB_index].isCall = false;
-      tgt.BTB[BTB_index].isRet = true;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].actualPC = fi.pc;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].valid = true;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].unconditional = true;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].isCall = false;
+      CPUstate.BPUModule.tgt.BTB[BTB_index].isRet = true;
     }
   }
   if (input.squashDetect.needSquash) {

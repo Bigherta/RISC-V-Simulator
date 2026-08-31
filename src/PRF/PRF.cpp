@@ -72,7 +72,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
         if (!input.ROBModule.isEmpty() &&
             !ROB::isOlder(lqTag, input.ROBModule.getHead())) {
           int newPhy =
-              input.ROBModule.getNewPhy(input.ROBModule.getIndexByTag(lqTag));
+              input.ROBModule.getNewPhy(((lqTag) & 0x3F));
           if (newPhy != InvalidPhy) {
             CPUstate.PRFModule.write(newPhy, input.LQModule.getValue(i));
             if (debug::enabled(debug::TOPIC_PRF))
@@ -87,7 +87,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto robIdx = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
+      auto robIdx = ((cdbOut.result.robTag) & 0x3F);
       auto isControl = cdbOut.result.isControl;
       if (!isControl) {
         auto value = cdbOut.result.value;
@@ -120,7 +120,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
     }
   }
   if (input.squashDetect.needSquash) {
-    auto index = input.squashDetect.SquashIndex;
+    auto index = input.squashDetect.SquashTag & 0x3F;
     if (index >= 0) {
       auto ckptHead = PRFHeadCkpt[input.squashDetect.CkptId];
       CPUstate.PRFModule.restoreHead(ckptHead);
@@ -129,7 +129,7 @@ void PRF::tick(const PRFInput &input, systemState &CPUstate) {
   }
   if (input.ROBModule.isEmpty() || !input.ROBModule.isHeadCommitReady())
     return;
-  int headIdx = ROB::idx(input.ROBModule.getHead());
+  int headIdx = ((input.ROBModule.getHead() & 0x3F));
   if (!input.ROBModule.isHeadHalt() &&
       (input.ROBModule.headType() == ROBType::REGISTER ||
        input.ROBModule.headType() == ROBType::LINK)) {

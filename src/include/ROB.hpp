@@ -52,13 +52,11 @@ private:
   int push(ROBEntry entry);
   void pop();
   void setROBCommitReady(int index);
-  void flush(int squashIndex);
+  void flush(RobTag squashTag);
 
 public:
   static bool isOlder(RobTag tag_a, RobTag tag_b);
   static bool isYounger(RobTag tag_a, RobTag tag_b);
-  static int idx(RobTag t);
-  int getIndexByTag(RobTag tag) const;
   bool isFull() const;
   bool isEmpty() const;
   bool isHaltCommitted() const;

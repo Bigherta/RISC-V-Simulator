@@ -8,7 +8,6 @@ struct IssuePacket {
   bool valid = false;
   bool allocDest = false;
   int phy = InvalidPhy; // valid only when allocDest; P0-dead sentinel domain
-  int robIndex = -1;
   uint8_t robTag = 0;
   ROBEntry robEntry;
   bool hasInteger = false;

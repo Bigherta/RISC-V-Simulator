@@ -30,7 +30,6 @@ IssuePacket IssueArbiter::issue_IntegerRS(const IssueArbiterInput &input,
   p.valid = true;
   p.hasInteger = true;
   p.integerSlot = integerSlot;
-  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
   p.integerRS.free = false;
   p.integerRS.op = decodeOp(inst);
@@ -84,7 +83,6 @@ IssuePacket IssueArbiter::issue_UandJ(const IssueArbiterInput &input,
   p.valid = true;
   p.hasInteger = true;
   p.integerSlot = integerSlot;
-  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
   p.integerRS.free = false;
   p.integerRS.op = decodeOp(inst);
@@ -134,7 +132,6 @@ IssuePacket IssueArbiter::issue_B(const IssueArbiterInput &input,
   p.valid = true;
   p.hasBranch = true;
   p.branchSlot = branchSlot;
-  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
   p.branchRS.free = false;
   p.branchRS.op = decodeOp(inst);
@@ -169,7 +166,6 @@ IssuePacket IssueArbiter::issue_Load(const IssueArbiterInput &input,
   p.loadSlot = loadSlot;
   p.nBytes = n_bytes;
   p.isUnsigned = isUnsigned;
-  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
   p.loadRS.memIndex = input.LQModule.getTail();
   p.loadRS.free = false;
@@ -218,7 +214,6 @@ IssuePacket IssueArbiter::issue_Store(const IssueArbiterInput &input,
   p.storeAddrSlot = storeAddrSlot;
   p.storeValueSlot = storeValueSlot;
   p.nBytes = n_bytes;
-  p.robIndex = ROB::idx(input.ROBModule.getNextTag());
   p.robTag = input.ROBModule.getNextTag();
   p.storeAddrRS.memIndex =
       static_cast<uint8_t>(input.SQModule.getTail() | MEM_STORE_BIT);
@@ -362,7 +357,6 @@ IssuePacket IssueArbiter::build(const IssueArbiterInput &input) {
       if (inst.isHalt) {
         issuePacket.valid = true;
         issuePacket.isHalt = true;
-        issuePacket.robIndex = ROB::idx(input.ROBModule.getNextTag());
         issuePacket.robTag = input.ROBModule.getNextTag();
         issuePacket.robEntry = ROBEntry(ROBType::REGISTER);
         issuePacket.robEntry.dest = inst.rd;

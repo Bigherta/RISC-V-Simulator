@@ -107,7 +107,7 @@ PredictInfo BPU::predict(int32_t pc) const {
   bool taken = tagePred;
 
   const auto BTB_index = p2 & (BTB_CAP - 1);
-  const bool btbHit =
+  bool btbHit =
       tgt.BTB[BTB_index].valid && tgt.BTB[BTB_index].actualPC == static_cast<uint32_t>(pc);
   if (btbHit && tgt.BTB[BTB_index].unconditional)
     taken = true;
@@ -124,9 +124,16 @@ PredictInfo BPU::predict(int32_t pc) const {
                         !tgt.BTB[BTB_index].isCall &&
                         !tgt.BTB[BTB_index].isRet &&
                         tgt.TargetValid[tcHash];
+  // RET with empty RAS: don't use BTB target 0, treat as not taken (wild fetch fix)
+  bool isRet = tgt.BTB[BTB_index].isRet;
+  bool rasEmpty = tgt.RAS_top == 0;
+  if (isRet && rasEmpty) {
+    btbHit = false;
+    taken = false;
+  }
   int32_t predictPC = pc + 4;
   if (taken && btbHit) {
-    if (tgt.BTB[BTB_index].isRet && tgt.RAS_top > 0)
+    if (isRet && tgt.RAS_top > 0)
       predictPC = static_cast<int32_t>(
           tgt.RAS[(tgt.RAS_top - 1) & (RAS_CAP - 1)].retPC);
     else if (tcUsable)
@@ -364,7 +371,7 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
     {
       ++CPUstate.BPUModule.branchTotal;
       bool correct = pcResult == input.ROBModule.getPredictedPC(
-                                     input.ROBModule.getIndexByTag(brRobTag));
+                                     ((brRobTag) & 0x3F));
       if (correct)
         ++CPUstate.BPUModule.branchCorrect;
       else
@@ -377,7 +384,7 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
         bru.taken = pcResult != pcFrom + 4;
         bru.target = pcResult;
         const uint8_t cid = input.ROBModule.getCkptId(
-            input.ROBModule.getIndexByTag(brRobTag));
+            ((brRobTag) & 0x3F));
         bru.ghr = bpCkpt[cid].GHR_snapshot;
         bru.meta = dir.tmeta[cid];
       }
@@ -386,7 +393,7 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
   auto cdbOut = input.cdbOut;
   if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
       !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.getHead())) {
-    auto robIdx = input.ROBModule.getIndexByTag(cdbOut.result.robTag);
+    auto robIdx = ((cdbOut.result.robTag) & 0x3F);
     const auto pc = static_cast<uint32_t>(cdbOut.result.value);
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
@@ -493,7 +500,7 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
       tgt.BTB[BTB_index].isRet = true;
     }
   }
-  if (input.squashDetect.needSquash && input.squashDetect.SquashIndex >= 0) {
+  if (input.squashDetect.needSquash) {
     const auto &ckpt = bpCkpt[input.squashDetect.CkptId];
     uint8_t curTail = tgt.alignTail;
     uint8_t base = ckpt.alignTail;

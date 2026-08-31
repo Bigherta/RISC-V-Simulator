@@ -13,13 +13,6 @@ bool ROB::isYounger(RobTag tag_a, RobTag tag_b) {
   return isOlder(tag_b, tag_a);
 }
 
-int ROB::idx(RobTag t) { return t & 0x3F; }
-
-int ROB::getIndexByTag(RobTag tag) const {
-  assert(ROBqueue[idx(tag)].tag == tag);
-  return idx(tag);
-}
-
 bool ROB::isHaltCommitted() const { return haltCommitted; }
 
 int ROB::getHaltRd() const { return haltRd; }
@@ -34,8 +27,8 @@ bool ROB::isEmpty() const { return head == next_tag; }
 
 int ROB::push(ROBEntry entry) {
   entry.tag = next_tag;
-  ROBqueue[idx(next_tag)] = entry;
-  int index = idx(next_tag);
+  ROBqueue[next_tag & 0x3F] = entry;
+  int index = next_tag & 0x3F;
   updateNextTag();
   return index;
 }
@@ -85,27 +78,24 @@ bool ROB::isRet(int index) const { return ROBqueue[index].isRet; }
 bool ROB::isIndirect(int index) const { return ROBqueue[index].isIndirect; }
 
 bool ROB::isHeadCommitReady() const {
-  return ROBqueue[idx(getHead())].isCommitReady;
+  return ROBqueue[getHead() & 0x3F].isCommitReady;
 }
 
 int ROB::getHead() const { return head; }
 
-bool ROB::isHeadHalt() const { return isHalt(idx(getHead())); }
+bool ROB::isHeadHalt() const { return isHalt(getHead() & 0x3F); }
 
-ROBType ROB::headType() const { return getType(idx(getHead())); }
+ROBType ROB::headType() const { return getType(getHead() & 0x3F); }
 
-int ROB::headDest() const { return ROBqueue[idx(head)].dest; }
+int ROB::headDest() const { return ROBqueue[head & 0x3F].dest; }
 
-void ROB::flush(int squashIndex) {
-  next_tag = (ROBqueue[squashIndex].tag + 1) & 0x7F;
+void ROB::flush(RobTag squashTag) {
+  next_tag = (ROBqueue[squashTag & 0x3F].tag + 1) & 0x7F;
 }
 
 void ROB::tick(const ROBInput &input, systemState &CPUstate) {
-  // issue apply: push the pre-built ROB entry (robIndex >= 0 excludes the
-  // RV_INVALID "pop-only" packet, whose robIndex stays at the default -1)
-  if (input.issuePacket.valid && input.issuePacket.robIndex >= 0) {
-    int idx = CPUstate.ROBModule.push(input.issuePacket.robEntry);
-    assert(idx == input.issuePacket.robIndex);
+  if (input.issuePacket.valid) {
+    CPUstate.ROBModule.push(input.issuePacket.robEntry);
   }
   // BRU set ROB ready
   if (!input.BRUModule.isEmpty()) {
@@ -113,7 +103,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
          ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
-      CPUstate.ROBModule.setROBCommitReady(getIndexByTag(brRobTag));
+      CPUstate.ROBModule.setROBCommitReady(((brRobTag) & 0x3F));
     }
   }
   // LQ set ROB ready (loads) - commit guard: a READY load must not cross an
@@ -131,7 +121,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
           (input.squashDetect.needSquash &&
            ROB::isOlder(lqTag, input.squashDetect.SquashTag))) {
         if (!isEmpty() && !ROB::isOlder(lqTag, getHead())) {
-          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(lqTag));
+          CPUstate.ROBModule.setROBCommitReady(((lqTag) & 0x3F));
         }
       }
     }
@@ -148,7 +138,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
           (input.squashDetect.needSquash &&
            ROB::isOlder(sqTag, input.squashDetect.SquashTag))) {
         if (!isEmpty() && !ROB::isOlder(sqTag, getHead())) {
-          CPUstate.ROBModule.setROBCommitReady(getIndexByTag(sqTag));
+          CPUstate.ROBModule.setROBCommitReady(((sqTag) & 0x3F));
         }
       }
     }
@@ -158,7 +148,7 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
         ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto robIdx = getIndexByTag(cdbOut.result.robTag);
+      auto robIdx = ((cdbOut.result.robTag) & 0x3F);
       if (!isEmpty() && !ROB::isOlder(cdbOut.result.robTag, getHead())) {
         CPUstate.ROBModule.setROBCommitReady(robIdx);
       }
@@ -166,12 +156,12 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
   }
   // ROB squash
   if (input.squashDetect.needSquash) {
-    CPUstate.ROBModule.flush(input.squashDetect.SquashIndex);
+    CPUstate.ROBModule.flush(input.squashDetect.SquashTag);
     return;
   }
   if (isEmpty() || !isHeadCommitReady())
     return;
-  int headIdx = idx(getHead());
+  int headIdx = (getHead() & 0x3F);
   CPUstate.ROBModule.pop();
   if (isHeadHalt()) {
     CPUstate.ROBModule.haltCommitted = true;

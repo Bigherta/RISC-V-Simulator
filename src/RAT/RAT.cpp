@@ -27,7 +27,7 @@ void RAT::restoreRAT_PRF(const RATSnapshot &snapshot) {
 }
 
 void RAT::tick(const RATInput &input, systemState &CPUstate) {
-  if (input.squashDetect.needSquash && input.squashDetect.SquashIndex >= 0) {
+  if (input.squashDetect.needSquash) {
     CPUstate.RATModule.restoreRAT_PRF(
         this->ratCkpt[input.squashDetect.CkptId]);
   }

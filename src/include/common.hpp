@@ -127,8 +127,6 @@ struct MemDispatchDecision {
 
 struct SquashInfo {
   bool needSquash = false;
-  SquashKind kind = SquashKind::None;
-  int SquashIndex = -1;
   uint8_t SquashTag = 0;
   uint32_t SquashPC = 0;
   uint8_t CkptId = 0;

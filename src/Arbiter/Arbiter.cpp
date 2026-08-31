@@ -71,17 +71,15 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
          ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
       auto actualPC = pcResult;
       if (actualPC != input.ROBModule.getPredictedPC(
-                          input.ROBModule.getIndexByTag(brRobTag))) {
+                          ((brRobTag) & 0x3F))) {
         if (debug::enabled(debug::TOPIC_BRANCH))
           debug::print("squash tag=%u pc=%u (from %u)\n", brRobTag, actualPC,
                        pcFrom);
         BranchSquash.needSquash = true;
-        BranchSquash.kind = SquashKind::Branch;
         BranchSquash.SquashPC = actualPC;
-        BranchSquash.SquashIndex = input.ROBModule.getIndexByTag(brRobTag);
         BranchSquash.SquashTag = brRobTag;
         BranchSquash.CkptId =
-            input.ROBModule.getCkptId(BranchSquash.SquashIndex);
+            input.ROBModule.getCkptId(BranchSquash.SquashTag & 0x3F);
       }
     }
     if (BranchSquash.needSquash)
@@ -100,17 +98,14 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
         SquashInfo JumpSquash;
         const auto pc = static_cast<uint32_t>(cdbOut.result.value);
         if (pc != input.ROBModule.getPredictedPC(
-                      input.ROBModule.getIndexByTag(cdbOut.result.robTag))) {
+                      ((cdbOut.result.robTag) & 0x3F))) {
           if (debug::enabled(debug::TOPIC_BRANCH))
             debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.result.robTag,
                          pc);
           JumpSquash.needSquash = true;
-          JumpSquash.kind = SquashKind::Branch;
           JumpSquash.SquashPC = pc;
-          JumpSquash.SquashIndex =
-              input.ROBModule.getIndexByTag(cdbOut.result.robTag);
           JumpSquash.SquashTag = cdbOut.result.robTag;
-          JumpSquash.CkptId = input.ROBModule.getCkptId(JumpSquash.SquashIndex);
+          JumpSquash.CkptId = input.ROBModule.getCkptId(JumpSquash.SquashTag & 0x3F);
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
@@ -145,11 +140,9 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
               !ROB::isOlder(violTag, input.ROBModule.getHead())) {
             SquashInfo viol;
             viol.needSquash = true;
-            viol.kind = SquashKind::LoadViolation;
-            viol.SquashIndex = input.ROBModule.getIndexByTag(violTag);
             viol.SquashTag = violTag;
-            viol.SquashPC = input.ROBModule.getPC(viol.SquashIndex);
-            viol.CkptId = input.ROBModule.getCkptId(viol.SquashIndex);
+            viol.SquashPC = input.ROBModule.getPC(viol.SquashTag & 0x3F);
+            viol.CkptId = input.ROBModule.getCkptId(viol.SquashTag & 0x3F);
             CPUstate.flushArbiter.receive(viol);
             violationHandled = true;
           }
@@ -345,7 +338,7 @@ MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
     auto storeTag = SQ.headRobTag();
     bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.getHead());
     bool atHeadReady = !committed && SQ.headRobTag() == rob.getHead() &&
-                       rob.isCommitReadyAt(rob.getIndexByTag(SQ.headRobTag()));
+                       rob.isCommitReadyAt(((SQ.headRobTag() & 0x3F)));
     if (committed || atHeadReady) {
       MemRequest newRequest{};
       newRequest.address = SQ.getAddress(SQ.getHead());

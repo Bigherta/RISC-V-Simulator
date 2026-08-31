@@ -237,6 +237,6 @@ void SQ::tick(const SQInput &input, systemState &CPUstate) {
   // flush on squash
   if (input.squashDetect.needSquash) {
     CPUstate.SQModule.flush(
-        input.ROBModule.getSqtTailSnapshot(input.squashDetect.SquashIndex));
+        input.ROBModule.getSqtTailSnapshot(input.squashDetect.SquashTag & 0x3F));
   }
 }

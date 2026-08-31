@@ -200,5 +200,5 @@ void LQ::tick(const LQInput &input, systemState &CPUstate) {
   // flush on squash
   if (input.squashDetect.needSquash)
     CPUstate.LQModule.flush(
-        input.ROBModule.getLqtTailSnapshot(input.squashDetect.SquashIndex));
+        input.ROBModule.getLqtTailSnapshot(input.squashDetect.SquashTag & 0x3F));
 }

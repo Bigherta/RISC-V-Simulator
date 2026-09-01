@@ -7,7 +7,7 @@
 struct CacheLine {
   bool valid;
   uint32_t tag; // real: 18 bit for tag
-  uint32_t data[CACHE_BLOCK_CAP / 4]; // 16B line = 4x32-bit words
+  uint32_t data[ICACHE_BLOCK_CAP / 4]; // 16B line = 4x32-bit words
 };
 struct systemState;
 struct ICacheInput {
@@ -25,7 +25,7 @@ struct ICacheRequest {
 };
 class ICache {
 private:
-  CacheLine blocks[CACHE_CAP];
+  CacheLine blocks[ICACHE_CAP];
   ICacheRequest requestBuffer[REQUEST_CAP];
   uint8_t head;
   uint8_t count;

@@ -1,4 +1,5 @@
 #pragma once
+#include <variant>
 #ifndef COMMON_HPP
 #define COMMON_HPP
 #include <cstdint>
@@ -45,9 +46,25 @@ constexpr int PRF_CAP = 128;
 inline constexpr int InvalidPhy = 0;
 constexpr int IMEM_CAP = 16;
 constexpr int CKPT_CAP = 64;
-constexpr int CACHE_BLOCK_CAP = 16;
-constexpr int CACHE_CAP = 1024;
+constexpr int ICACHE_BLOCK_CAP = 16;
+constexpr int ICACHE_CAP = 1024;
 constexpr int REQUEST_CAP = 4;
+constexpr int NUM_OF_WAYS = 4;
+// DCache geometry, overridable at compile time. Shrinking the cache (e.g.
+// -DNUM_OF_SETS=64 -DDCACHE_INDEX_BITS=6) forces capacity evictions so the
+// dirty-writeback path gets exercised; the index/tag split follows.
+#ifndef NUM_OF_SETS
+#define NUM_OF_SETS 1024
+#endif
+constexpr int DCACHE_BLOCK_CAP = 16;
+#ifndef DCACHE_INDEX_BITS
+#define DCACHE_INDEX_BITS 10 // log2(NUM_OF_SETS) = 1024 sets
+#endif
+#define DCACHE_TAG_SHIFT (4 + DCACHE_INDEX_BITS) // 16B block + set index bits
+static_assert(NUM_OF_SETS == (1 << DCACHE_INDEX_BITS),
+              "NUM_OF_SETS must be 2^DCACHE_INDEX_BITS");
+static_assert(DCACHE_BLOCK_CAP == 16, "16B lines assumed by DCACHE_TAG_SHIFT");
+
 enum class ValueState {
   NOTREADY,
   FETCHING,
@@ -109,9 +126,9 @@ struct BranchResult {
   uint8_t robTag;
 };
 
+// Arbiter->DCache
 struct MemRequest {
-  Operation op;
-  int remainCycle = 3;
+  Operation op;     // Load | Store
   int32_t value;
   uint32_t address;
   bool isSigned;
@@ -119,10 +136,32 @@ struct MemRequest {
   uint8_t robTag;
   uint8_t memIndex;
 };
-
 struct MemDispatchDecision {
-  bool valid = false;
-  MemRequest request{};
+  bool valid;
+  MemRequest request;
+};
+
+// DCache->DMEM
+struct ReadRequest { // 线路读 / NO_ALLOCATE load 透传
+  int remainCycle = 0;
+  uint32_t address;
+};
+struct WriteRequest { // 线路写 / NO_ALLOCATE store 透传
+  int remainCycle = 0;
+  uint32_t address = 0; // 块对齐(victim 基址重建)
+  uint8_t lineData[16] = {}; // LINE_WRITE 载荷
+};
+struct DMEMRequest {           // DCache → DMEM，双通道（每口一 valid）
+  bool readValid = false;
+  ReadRequest read{};
+  bool writeValid = false;
+  WriteRequest write{};
+};
+
+// DMEM->DCache
+struct MemReply {
+  bool valid = false;   
+  uint8_t lineData[16];
 };
 
 struct SquashInfo {

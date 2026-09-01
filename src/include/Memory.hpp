@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <stdexcept>
 
 static constexpr uint32_t MEM_SIZE = 128 * 1024;
 

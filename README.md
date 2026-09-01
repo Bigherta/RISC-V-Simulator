@@ -29,7 +29,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   ├── CPU/CPU.cpp                # comb() 快照 + 组合求值（FetchDecision / CDBArbiter /
 │   │                              #   CDBBus / IssueArbiter / DispatchArbiter /
 │   │                              #   MemDispatchDecision / LoadResponse / LineReturn）
-│   │                              #   → 按流水顺序调用 17 个模块的 tick
+│   │                              #   → 按流水顺序调用 18 个模块的 tick
 │   ├── include/                   # 全部头文件
 │   │   ├── common.hpp             # 容量常量与公共结构体（ROBEntry / CDBBus / FetchDecision / …）
 │   │   ├── CPU.hpp                # systemState（活体模块）+ CPU（快照成员 + Input 接线）
@@ -37,8 +37,9 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── Arbiter.hpp            # FlushArbiter（squash 仲裁）+ CDB / Dispatch 组合求值
 │   │   ├── BRU.hpp                # 分支执行单元（含输出缓冲）
 │   │   ├── BranchPredictor.hpp    # TAGE 分支预测器（bimodal 基表 T0 + 4 标签表 + BTB/TargetCache + SARAS RAS）
+│   │   ├── DCache.hpp              # 数据缓存（64KB / 4 路 / 16B 行 / LRU / 写回+写分配，双口 DMEM 上游）
 │   │   ├── Decoder.hpp            # 译码器 + 指令队列 IQ
-│   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与整行突发）
+│   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与整行突发；DMEM 双口：读 LINE_READ / 写 LINE_WRITE）
 │   │   ├── FetchQueue.hpp         # 取指队列 FQ
 │   │   ├── FetchUnit.hpp          # 前端 PC 寄存器 + halt 状态（程序计数器 / haltFetched）
 │   │   ├── ICache.hpp             # 16KB 直接映射指令缓存（1024 行 × 16B，word4 行总线）
@@ -50,7 +51,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── ROB.hpp                # 重排序缓冲（条目含 checkpoint 快照）
 │   │   ├── RS.hpp                 # 保留站（Integer / Load / StoreAddress / StoreValue / Branch）
 │   │   └── util.hpp               # 调试宏（VERBOSE 主题开关）
-│   ├── AGU/  ALU/  Arbiter/  BRU/  BranchPredictor/  CPU/  DMEM/  Decoder/
+│   ├── AGU/  ALU/  Arbiter/  BRU/  BranchPredictor/  CPU/  DCache/  DMEM/  Decoder/
 │   ├── FetchQueue/  FetchUnit/  ICache/  IMEM/  IssueArbiter/  LSQ/  PRF/
 │   ├── RAT/  ROB/  RS/   # 各模块 tick 实现
 │   └── main/
@@ -59,7 +60,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   ├── testcases/                 # 18 个官方测试点（.c 源码 + .data 机器码 + .dump 反汇编）
 │   └── golden/                    # 基线（返回值 + 时钟数）
 ├── test/                          # 乱序执行一致性测试（独立构建，不影响 OJ 提交）
-│   ├── reorder_test.cpp           # 以任意顺序调用 17 个流水级的测试驱动
+│   ├── reorder_test.cpp           # 以任意顺序调用 18 个流水级的测试驱动
 │   ├── CMakeLists.txt
 │   └── test_reorder.sh            # 一致性测试脚本
 ├── test.sh                        # 代码行为测试脚本（返回值 / 分支正确率 / 时钟数）
@@ -141,7 +142,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 
 ### 5.1 乱序执行一致性测试 — `test/test_reorder.sh`
 
-`test/reorder_test` 以**任意顺序**调用 17 个流水级（rat / lsq / decode / agu / bru / bp / dmem / alu / rs / rob / prf / arb / imem / fq / icache / fetchunit），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
+`test/reorder_test` 以**任意顺序**调用 18 个流水级（rat / lq / sq / decode / agu / bru / bp / dmem / alu / rs / rob / prf / arb / imem / fq / icache / fetchunit / dcache），要求所有排列得到**完全相同**的返回值（`x10&0xFF`）与**完全相同**的时钟周期数，并与 `data/golden/` 基线对比。
 
 构建（独立于根目录，不影响 OJ 提交）：
 
@@ -168,7 +169,7 @@ cd test
 | 100 ~ 10000ms | 随机 **100** 组 |
 | > 10000ms | 仅参考序 **1** 组（`ref` 模式，如 pi） |
 
-> 注：流水级已从早期的 7 阶段扩展为 17 阶段，全排列 = 17! = 355687428096000 组已不现实，
+> 注：流水级已从早期的 7 阶段扩展为 18 阶段，全排列 = 18! = 6402373705728000 组已不现实，
 > 故快档统一用随机 100 组。
 
 输出列：`Program`、`Count`（档位）、`Perms`（实际排列数）、`Value`（`x10&0xFF`）、`Clock`、`Golden(x10/clk)`、`Result`、`Time`。
@@ -265,35 +266,51 @@ TAGE 混合预测器（方向预测 TAGE 化；目标预测按控制流类型拆
 
 ### 6.2 逐测试点结果
 
+> 数据来自 2026-09-01 主树（已加入真 DCache：64KB/4 路/16B 行/LRU/写回+写分配，
+> 位于 MemRequestArbiter 与双口 DMEM 之间）。`VERBOSE=dcache` 可查命中率；clock 列已随
+> DCache 落地重写（宏观架构改动），x10 全部不变。耗时为本机（x86-64）无沙箱实测。
+
 | 测试点 | x10（返回值） | 时钟周期数 | 分支正确/总数 | 准确率 | 耗时 | 结果 |
 |--------|:---:|-----------:|--------------:|-------:|-----:|:----:|
-| array_test1 | 123 | 342 | 22/46 | 47.83% | 0.03s | OK |
-| array_test2 | 43 | 393 | 27/52 | 51.92% | 0.03s | OK |
-| basicopt1 | 88 | 533,032 | 189,971/190,923 | 99.50% | 3.31s | OK |
-| bulgarian | 159 | 369,207 | 91,426/94,018 | 97.24% | 2.63s | OK |
-| expr | 58 | 1,018 | 76/134 | 56.72% | 0.04s | OK |
-| gcd | 178 | 885 | 114/182 | 62.64% | 0.03s | OK |
-| hanoi | 20 | 176,334 | 28,101/28,369 | 99.06% | 1.29s | OK |
-| lvalue2 | 175 | 141 | 8/18 | 44.44% | 0.03s | OK |
-| magic | 106 | 776,893 | 92,404/103,765 | 89.05% | 5.51s | OK |
-| manyarguments | 40 | 149 | 10/20 | 50.00% | 0.03s | OK |
-| multiarray | 115 | 2,046 | 203/280 | 72.50% | 0.04s | OK |
-| naive | 94 | 73 | 0/4 | 0.00% | 0.03s | OK |
-| pi | 137 | 137,402,603 | 37,061,463/43,099,639 | 85.99% | 1572.60s | OK |
-| qsort | 105 | 1,226,401 | 266,924/269,542 | 99.03% | 5.09s | OK |
-| queens | 171 | 843,006 | 90,408/104,295 | 86.68% | 3.67s | OK |
-| statement_test | 50 | 1,700 | 183/286 | 63.99% | 0.04s | OK |
-| superloop | 134 | 636,516 | 439,902/460,318 | 95.56% | 2.52s | OK |
-| tak | 186 | 1,967,097 | 194,112/202,649 | 95.79% | 11.43s | OK |
-| **TOTAL**| — | **143,940,973** | **38,455,354/44,554,540** | **86.31%** | — | **18/18** |
+| array_test1 | 123 | 343 | 24/46 | 52.17% | 0.82s | OK |
+| array_test2 | 43 | 369 | 31/52 | 59.62% | 0.77s | OK |
+| basicopt1 | 88 | 524,022 | 190,035/190,960 | 99.52% | 2.03s | OK |
+| bulgarian | 159 | 318,312 | 89,647/92,180 | 97.25% | 1.63s | OK |
+| expr | 58 | 1,007 | 80/135 | 59.26% | 0.77s | OK |
+| gcd | 178 | 869 | 110/174 | 63.22% | 0.79s | OK |
+| hanoi | 20 | 143,231 | 28,023/28,224 | 99.29% | 1.18s | OK |
+| lvalue2 | 175 | 137 | 6/16 | 37.50% | 0.76s | OK |
+| magic | 106 | 563,971 | 82,095/92,243 | 89.00% | 2.30s | OK |
+| manyarguments | 40 | 147 | 9/19 | 47.37% | 0.74s | OK |
+| multiarray | 115 | 1,887 | 205/277 | 74.01% | 0.80s | OK |
+| naive | 94 | 65 | 0/4 | 0.00% | 0.80s | OK |
+| pi | 137 | 137,590,156 | 37,029,874/43,099,265 | 85.92% | 347.00s | OK |
+| qsort | 105 | 1,167,211 | 267,284/269,522 | 99.17% | 3.81s | OK |
+| queens | 171 | 593,814 | 89,198/103,201 | 86.43% | 2.37s | OK |
+| statement_test | 50 | 1,669 | 185/289 | 64.01% | 0.80s | OK |
+| superloop | 134 | 636,508 | 439,902/460,317 | 95.57% | 2.35s | OK |
+| tak | 186 | 1,523,955 | 187,778/197,075 | 95.28% | 4.85s | OK |
+| **TOTAL**| — | **143,067,673** | **38,404,486/44,533,999** | **86.24%** | — | **18/18** |
 
 > 说明：`naive` 只有 4 次条件分支且属于基本不可预测的模式，正确率 0% 属正常；
 > `array_test1` 等小测试点分支基数小，正确率波动大，参考大测试点（basicopt1
-> 99.50%、hanoi 99.06%、qsort 99.03%）为准。周期数只要求与 golden 尽力对齐，
+> 99.52%、hanoi 99.29%、qsort 99.17%）为准。周期数只要求与 golden 尽力对齐，
 > 不硬性一致。pi 的剩余误预测 ~86% 集中在软件除法子程序的数据相关分支
 > （RV32I 无 M 扩展，`/` `%` 走 libgcc `__udivsi3` 的商位判定），属历史窗口外的
 > 熵墙；RAS 侧已用预译码（Pre-decode）修复冷启动漏栈问题（详见 AGENTS.md 变更记录）。
+>
+> **DCache 对 clock 的影响**：访存密集用例显著提速（magic -28%、queens -30%、tak -22%）；
+> pi 属**访存稀疏型**（566,027 次访存 / 137M 拍 ≈ 每 242 拍 1 次，命中率 99.88%，
+> 704 次缺失恰为 f[2801] 的 700 行冷启动）——基线 4 拍延迟本就不阻塞流水线，命中提速被
+> 除法计算瓶颈吸收，净增 +0.14%（187,553 拍，来自缺失写分配延迟与命中提前引发的
+> 流水线竞争气泡）。分支总数几乎不变（43,099,639→43,099,265），证明 DCache 未改变
+> 乱序执行的重执行行为。
 
+
+> **写回（脏逐出）路径**：官方 18 用例工作集均 < 64KB cache，脏逐出从未触发（writebacks=0）。
+> 另设写回专项微测试 **wb_test**（Python 编码 14 指令：5 个同 set 不同 tag 的 store 强制
+> 脏逐出 ×2，末尾 lw 读回验证写回数据落 DMEM），golden `1 55`，`test.sh` 全量为 **19 用例**；
+> 该用例同时通过 reorder_test 10 组排列不变性验证。
 
 ### 6.3 复现
 

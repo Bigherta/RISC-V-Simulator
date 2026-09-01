@@ -11,7 +11,7 @@ struct IMEMInput {
   bool lineConsumed = false;
 };
 struct IMEMRequest {
-  uint8_t data[CACHE_BLOCK_CAP];
+  uint8_t data[ICACHE_BLOCK_CAP];
   uint32_t lineAddr = 0;
   int remain_cycle = 0;
   bool valid = false;

@@ -7,6 +7,7 @@
 #include "Arbiter.hpp"
 #include "BRU.hpp"
 #include "BPU.hpp"
+#include "DCache.hpp"
 #include "DMEM.hpp"
 #include "Decoder.hpp"
 #include "InstructBuffer.hpp"
@@ -37,6 +38,7 @@ struct systemState {
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
+  DCache DCacheModule;
   IMEM IMEMModule;
   BPU BPUModule;
   FlushArbiter flushArbiter;
@@ -65,6 +67,7 @@ private:
   DecodeUnit DecodeUnitModule;
   PRF PRFModule;
   DMEM DMEMModule;
+  DCache DCacheModule;
   IMEM IMEMModule;
   BPU BPUModule;
   FlushArbiter flushArbiter;
@@ -76,6 +79,7 @@ private:
   BRUInput bruInput{ROBModule, RSModule, PRFModule};
   BPUInput bpuInput{BRUModule, ROBModule};
   DMEMInput dmemInput{};
+  DCacheInput dcacheInput{DMEMModule};
   DecodeInput decodeInput{FQModule, issuePacket};
   LQInput lqInput{AGUModule, RSModule, ROBModule, DMEMModule, SQModule,
                    issuePacket};

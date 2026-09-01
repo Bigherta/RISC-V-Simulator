@@ -72,6 +72,7 @@ void CPU::comb() {
   memcpy(&FetchUnitModule, &CPUstate.FetchUnitModule,
          sizeof(FetchUnitModule));
   DMEMModule.snapshotFrom(CPUstate.DMEMModule);
+  DCacheModule.snapshotFrom(CPUstate.DCacheModule);
   squashDetect = CPUstate.flushArbiter.arbitResult();
   fetchDecision = FetchDecision::build(
       BPUModule, FetchUnitModule.getPC(), squashDetect,
@@ -121,13 +122,17 @@ void CPU::comb() {
   aguInput.dispatch = dispatchBus.agu;
   bruInput.dispatch = dispatchBus.bru;
   rsInput.dispatchBus = dispatchBus;
-  dmemInput.squashDetect = squashDetect;
   decodeInput.squashDetect = squashDetect;
   lqInput.squashDetect = squashDetect;
   sqInput.squashDetect = squashDetect;
   auto memDispatch = MemRequestArbiter::arbitrate(LQModule, SQModule, ROBModule,
-                                                  DMEMModule, squashDetect);
-  dmemInput.decision = memDispatch;
+                                                  DCacheModule, squashDetect);
+  dcacheInput.squashDetect = squashDetect;
+  dcacheInput.decision = memDispatch;
+  // DMEM now only ever receives requests forwarded by the DCache: the DCache
+  // emits its dual-channel pulse (registered in the live module at the end of
+  // the previous tick, mirrored into the snapshot by snapshotFrom).
+  dmemInput.request = DCacheModule.forwardRequest();
   lqInput.decision = memDispatch;
   sqInput.decision = memDispatch;
   // store value-ready broadcast (data event): scan ready storeValueRS entries
@@ -174,8 +179,9 @@ void CPU::comb() {
   bpuInput.fetchInfo = scanJump(FQModule.getLastPush());
   CDBBus cdbBus = CDBBus::build(cdbOut, squashDetect);
   lqInput.cdbBus = cdbBus;
-  auto LoadResponse = DMEMModule.LoadReturn(squashDetect);
-  lqInput.loadResp = LoadResponse;
+  // All load responses now come from the DCache (it is DMEM's sole client;
+  // DMEM never receives Operation::Load anymore).
+  lqInput.loadResp = DCacheModule.loadResp(squashDetect);
 }
 
 void CPU::run() {
@@ -196,6 +202,7 @@ void CPU::run() {
     BRUModule.tick(bruInput, CPUstate);
     BPUModule.tick(bpuInput, CPUstate);
     DMEMModule.tick(dmemInput, CPUstate);
+    DCacheModule.tick(dcacheInput, CPUstate);
     RSModule.tick(rsInput, CPUstate);
     RATModule.tick(ratInput, CPUstate);
     flushArbiter.tick(flarbInput, CPUstate);
@@ -206,6 +213,15 @@ void CPU::run() {
   }
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);
+  if (debug::enabled(debug::TOPIC_DCACHE)) {
+    uint32_t hits = CPUstate.DCacheModule.getHitCount();
+    uint32_t misses = CPUstate.DCacheModule.getMissCount();
+    debug::print("dcache: hits=%u misses=%u total=%u hit-rate=%.2f%% "
+                 "writebacks=%u\n",
+                 hits, misses, hits + misses,
+                 hits + misses ? 100.0 * hits / (hits + misses) : 0.0,
+                 CPUstate.DCacheModule.getWritebackCount());
+  }
   if (debug::enabled(debug::TOPIC_BRANCH))
     debug::print("branch: %llu/%llu correct (%.2f%%)\n",
                  CPUstate.BPUModule.getBranchCorrect(),

@@ -21,6 +21,7 @@ enum Topic : unsigned {
   TOPIC_PRF = 1u << 8,
   TOPIC_MDP = 1u << 9,
   TOPIC_BPMISS = 1u << 10,
+  TOPIC_DCACHE = 1u << 11,
   TOPIC_ALL = 0xFFFFFFFFu,
 };
 
@@ -56,6 +57,8 @@ static unsigned parseVerbose(const char *env) {
       mask |= TOPIC_MDP;
     else if (len == 6 && strncmp(p, "bpmiss", 6) == 0)
       mask |= TOPIC_BPMISS;
+    else if (len == 6 && strncmp(p, "dcache", 6) == 0)
+      mask |= TOPIC_DCACHE;
     if (end == nullptr)
       break;
     p = end + 1;

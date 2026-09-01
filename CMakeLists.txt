@@ -8,6 +8,7 @@ set(CPU_SOURCES
     src/CPU/CPU.cpp
     src/Decoder/Decoder.cpp
     src/DMEM/DMEM.cpp
+    src/DCache/DCache.cpp
     src/ROB/ROB.cpp
     src/RS/RS.cpp
     src/ALU/ALU.cpp

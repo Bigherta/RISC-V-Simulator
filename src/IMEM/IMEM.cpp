@@ -69,7 +69,7 @@ void IMEM::tick(const IMEMInput &input, systemState &CPUstate) {
       CPUstate.IMEMModule.IMEMreqs[i].remain_cycle = next;
       if (next == 0) {
         // line burst fill: read the whole 16B line from Memory
-        for (int b = 0; b < CACHE_BLOCK_CAP; ++b) {
+        for (int b = 0; b < ICACHE_BLOCK_CAP; ++b) {
           CPUstate.IMEMModule.IMEMreqs[i].data[b] =
               CPUstate.IMEMModule.read_data(sreq.lineAddr + b);
         }

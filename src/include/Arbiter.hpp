@@ -2,6 +2,7 @@
 #include "AGU.hpp"
 #include "ALU.hpp"
 #include "BRU.hpp"
+#include "DCache.hpp"
 #include "Decoder.hpp"
 #include "LQ.hpp"
 #include "PRF.hpp"
@@ -50,6 +51,7 @@ private:
   FlushRequest requests[FLUSHARBITER_CAP];
   void receive(SquashInfo request);
   void clear(uint8_t tag);
+
 public:
   FlushArbiter();
   SquashInfo arbitResult() const;
@@ -81,6 +83,6 @@ public:
 class MemRequestArbiter {
 public:
   static MemDispatchDecision arbitrate(const LQ &LQ, const SQ &SQ,
-                                       const ROB &rob, const DMEM &dmem,
+                                       const ROB &rob, const DCache &dcache,
                                        const SquashInfo &squash);
 };

@@ -1,6 +1,7 @@
 #include "../include/Arbiter.hpp"
 #include "../include/CPU.hpp"
 #include "../include/util.hpp"
+#include "DCache.hpp"
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
@@ -70,9 +71,8 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
         (input.squashDetect.needSquash &&
          ROB::isOlder(brRobTag, input.squashDetect.SquashTag))) {
       auto actualPC = pcResult;
-      if (actualPC != input.ROBModule.getPredictedPC(
-                          ((brRobTag) & 0x3F))) {
-        if (debug::enabled(debug::TOPIC_BRANCH))
+      if (actualPC != input.ROBModule.getPredictedPC(((brRobTag) & 0x3F))) {
+        if (debug::enabled(debug::TOPIC_BPMISS))
           debug::print("squash tag=%u pc=%u (from %u)\n", brRobTag, actualPC,
                        pcFrom);
         BranchSquash.needSquash = true;
@@ -97,24 +97,25 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
           isControl) {
         SquashInfo JumpSquash;
         const auto pc = static_cast<uint32_t>(cdbOut.result.value);
-        if (pc != input.ROBModule.getPredictedPC(
-                      ((cdbOut.result.robTag) & 0x3F))) {
-          if (debug::enabled(debug::TOPIC_BRANCH))
+        if (pc !=
+            input.ROBModule.getPredictedPC(((cdbOut.result.robTag) & 0x3F))) {
+          if (debug::enabled(debug::TOPIC_BPMISS))
             debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.result.robTag,
                          pc);
           JumpSquash.needSquash = true;
           JumpSquash.SquashPC = pc;
           JumpSquash.SquashTag = cdbOut.result.robTag;
-          JumpSquash.CkptId = input.ROBModule.getCkptId(JumpSquash.SquashTag & 0x3F);
+          JumpSquash.CkptId =
+              input.ROBModule.getCkptId(JumpSquash.SquashTag & 0x3F);
         }
         if (JumpSquash.needSquash)
           CPUstate.flushArbiter.receive(JumpSquash);
       }
     }
   }
-  
 
-  if (!input.AGUModule.isEmpty() && isStoreMem(input.AGUModule.headMemIndex())) {
+  if (!input.AGUModule.isEmpty() &&
+      isStoreMem(input.AGUModule.headMemIndex())) {
     auto aguRobTag = input.AGUModule.headRobTag();
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
@@ -125,7 +126,7 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
       for (int k = 0; k < LQ_CAP; ++k) {
         uint8_t i = (lqHead + k) & 0x0F;
         if (violationHandled)
-          continue;  
+          continue;
         if (!input.LQModule.isActive(i))
           continue;
         if (input.LQModule.isAddressReady(i) &&
@@ -237,9 +238,7 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
                                        const ROB &ROB, const PRF &PRF,
                                        const SquashInfo &squash) {
   DispatchBus dispatch;
-  auto opReady = [&PRF](const Operand &op) {
-    return PRF.isOperandReady(op);
-  };
+  auto opReady = [&PRF](const Operand &op) { return PRF.isOperandReady(op); };
   if (!ALU.isFull()) {
     bool foundAny = false;
     int best = -1;
@@ -331,10 +330,10 @@ DispatchBus DispatchArbiter::arbitrate(const RSUnit &RS, const ALU &ALU,
 
 MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
                                                  const ROB &rob,
-                                                 const DMEM &dmem,
+                                                 const DCache &dcache,
                                                  const SquashInfo &squash) {
   MemDispatchDecision memDecision{};
-  if (!dmem.isBusy() && !SQ.isEmpty()) {
+  if (!dcache.isBusy() && !SQ.isEmpty()) {
     auto storeTag = SQ.headRobTag();
     bool committed = rob.isEmpty() || ROB::isOlder(storeTag, rob.getHead());
     bool atHeadReady = !committed && SQ.headRobTag() == rob.getHead() &&
@@ -351,25 +350,25 @@ MemDispatchDecision MemRequestArbiter::arbitrate(const LQ &LQ, const SQ &SQ,
       memDecision.request = newRequest;
     }
   }
-  if (memDecision.valid)
-    return memDecision;
-  auto loadIndex = LQ.LoadDetect();
-  if (loadIndex != 0xFFFFFFFF && !dmem.isBusy()) {
-    auto loadAddr = LQ.getAddress(loadIndex);
-    auto loadTag = LQ.getRobTag(loadIndex);
-    if (SQ.canDispatchLoad(loadAddr, loadTag)) {
-      MemRequest newRequest{};
-      newRequest.address = LQ.getAddress(loadIndex);
-      newRequest.isSigned = !LQ.getIsUnsigned(loadIndex);
-      newRequest.n_bytes = LQ.getNBytes(loadIndex);
-      newRequest.op = Operation::Load;
-      newRequest.robTag = LQ.getRobTag(loadIndex);
-      newRequest.memIndex = static_cast<uint8_t>(loadIndex);
-      if (!squash.needSquash ||
-          (squash.needSquash &&
-           ROB::isOlder(newRequest.robTag, squash.SquashTag))) {
-        memDecision.valid = true;
-        memDecision.request = newRequest;
+  if (!memDecision.valid) {
+    auto loadIndex = LQ.LoadDetect();
+    if (loadIndex != 0xFFFFFFFF && !dcache.isBusy()) {
+      auto loadAddr = LQ.getAddress(loadIndex);
+      auto loadTag = LQ.getRobTag(loadIndex);
+      if (SQ.canDispatchLoad(loadAddr, loadTag)) {
+        MemRequest newRequest{};
+        newRequest.address = LQ.getAddress(loadIndex);
+        newRequest.isSigned = !LQ.getIsUnsigned(loadIndex);
+        newRequest.n_bytes = LQ.getNBytes(loadIndex);
+        newRequest.op = Operation::Load;
+        newRequest.robTag = LQ.getRobTag(loadIndex);
+        newRequest.memIndex = static_cast<uint8_t>(loadIndex);
+        if (!squash.needSquash ||
+            (squash.needSquash &&
+             ROB::isOlder(newRequest.robTag, squash.SquashTag))) {
+          memDecision.valid = true;
+          memDecision.request = newRequest;
+        }
       }
     }
   }

@@ -14,8 +14,8 @@ set(CPU_SOURCES
     src/ALU/ALU.cpp
     src/AGU/AGU.cpp
     src/BRU/BRU.cpp
-    src/Arbiter/Arbiter.cpp
-    src/IssueArbiter/IssueArbiter.cpp
+    src/DynamicArbiter/DynamicArbiter.cpp
+    src/StaticArbiter/StaticArbiter.cpp
     src/IMEM/IMEM.cpp
     src/ICache/ICache.cpp
     src/FetchUnit/FetchUnit.cpp

@@ -3,8 +3,8 @@
 #define CPU_HPP
 #include "AGU.hpp"
 #include "ALU.hpp"
-#include "IssueArbiter.hpp"
-#include "Arbiter.hpp"
+#include "DynamicArbiter.hpp"
+#include "StaticArbiter.hpp"
 #include "BRU.hpp"
 #include "BPU.hpp"
 #include "DCache.hpp"
@@ -89,8 +89,7 @@ private:
   ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
   PRFInput prfInput{LQModule, SQModule, ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};
-  FlushArbiterInput flarbInput{BRUModule, ROBModule, AGUModule, LQModule,
-                                SQModule};
+  FlushArbiterInput flarbInput{BRUModule, ROBModule, AGUModule, LQModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,
                                 RATModule,        PRFModule, LQModule,
                                 SQModule};

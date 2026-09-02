@@ -21,7 +21,6 @@ class DMEM : public Memory {
   MemReply readOutputBuffer = {};
   WriteRequest writeExecute = {};
   void writeLine(uint32_t addr, const uint8_t* lineData);
-  const uint8_t* readLine(uint32_t addr);
   void MemPull();
 
 public:

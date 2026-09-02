@@ -28,8 +28,8 @@ void ICache::pushRequest(uint32_t raw_inst, uint32_t pc, int32_t predictPC,
 }
 
 bool ICache::hit(uint32_t addr) const {
-  auto index = (addr >> 4) & 0x3FF;
-  return blocks[index].valid && (blocks[index].tag == (addr >> 14));
+  auto index = (addr >> 4) & (ICACHE_CAP - 1);
+  return blocks[index].valid && (blocks[index].tag == (addr >> 13));
 }
 
 void ICache::tick(const ICacheInput &input, systemState &CPUstate) {
@@ -45,9 +45,9 @@ void ICache::tick(const ICacheInput &input, systemState &CPUstate) {
   // stage 2 line refill: consume the IMEM line-return bus (word4), fill the
   // cache line and backfill the placeholder entry
   if (input.lineReturn.valid) {
-    auto cachelineIndex = (input.lineReturn.lineAddr >> 4) & 0x3FF;
+    auto cachelineIndex = (input.lineReturn.lineAddr >> 4) & (ICACHE_CAP - 1);
     CPUstate.ICacheModule.blocks[cachelineIndex].valid = true;
-    CPUstate.ICacheModule.blocks[cachelineIndex].tag = input.lineReturn.lineAddr >> 14;
+    CPUstate.ICacheModule.blocks[cachelineIndex].tag = input.lineReturn.lineAddr >> 13;
     for (int w = 0; w < 4; ++w) {
       CPUstate.ICacheModule.blocks[cachelineIndex].data[w] =
           input.lineReturn.data[w];
@@ -69,10 +69,12 @@ void ICache::tick(const ICacheInput &input, systemState &CPUstate) {
     bool isHit = hit(input.fetchDecision.pc);
     uint32_t raw_inst = 0;
     if (isHit) {
-      auto cachelineIndex = (input.fetchDecision.pc >> 4) & 0x3FF;
+      auto cachelineIndex = (input.fetchDecision.pc >> 4) & (ICACHE_CAP - 1);
       raw_inst = blocks[cachelineIndex].data[(input.fetchDecision.pc >> 2) & 3];
     }
     CPUstate.ICacheModule.pushRequest(raw_inst, input.fetchDecision.pc,
         input.fetchDecision.predictedPC, input.fetchDecision.ckptId, isHit);
+    if (isHit) CPUstate.ICacheModule.hitCount++;
+    else CPUstate.ICacheModule.missCount++;
   }
 }

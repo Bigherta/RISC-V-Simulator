@@ -47,7 +47,7 @@ inline constexpr int InvalidPhy = 0;
 constexpr int IMEM_CAP = 16;
 constexpr int CKPT_CAP = 64;
 constexpr int ICACHE_BLOCK_CAP = 16;
-constexpr int ICACHE_CAP = 1024;
+constexpr int ICACHE_CAP = 512; // 8KB direct-mapped (512×16B), was 1024×16B=16KB
 constexpr int REQUEST_CAP = 4;
 constexpr int NUM_OF_WAYS = 4;
 // DCache geometry, overridable at compile time. Shrinking the cache (e.g.
@@ -160,8 +160,7 @@ struct DMEMRequest {           // DCache → DMEM，双通道（每口一 valid�
 
 // DMEM->DCache
 struct MemReply {
-  bool valid = false;   
-  uint8_t lineData[16];
+  uint8_t lineData[16] = {};
 };
 
 struct SquashInfo {

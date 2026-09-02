@@ -33,8 +33,6 @@ void DMEM::writeLine(uint32_t addr, const uint8_t *lineData) {
   }
 }
 
-const uint8_t *DMEM::readLine(uint32_t addr) { return mem + addr; }
-
 void DMEM::MemPull() { readBufferValid = false; }
 
 bool DMEM::isReadBusy() const { return readBusy; }

@@ -34,7 +34,8 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── common.hpp             # 容量常量与公共结构体（ROBEntry / CDBBus / FetchDecision / …）
 │   │   ├── CPU.hpp                # systemState（活体模块）+ CPU（快照成员 + Input 接线）
 │   │   ├── AGU.hpp / ALU.hpp      # 地址计算 / 算术逻辑执行单元（含输出缓冲）
-│   │   ├── Arbiter.hpp            # FlushArbiter（squash 仲裁）+ CDB / Dispatch 组合求值
+│   │   ├── DynamicArbiter.hpp    # 有状态仲裁器族：FlushArbiter（squash 请求队列 + 四阶段 tick）
+│   │   ├── StaticArbiter.hpp     # 无状态仲裁器族：CDB / Dispatch / MemArbiter / IssueArbiter + IssuePacket（CDBBus::build 寄居）
 │   │   ├── BRU.hpp                # 分支执行单元（含输出缓冲）
 │   │   ├── BranchPredictor.hpp    # TAGE 分支预测器（bimodal 基表 T0 + 4 标签表 + BTB/TargetCache + SARAS RAS）
 │   │   ├── DCache.hpp              # 数据缓存（64KB / 4 路 / 16B 行 / LRU / 写回+写分配，双口 DMEM 上游）
@@ -43,7 +44,6 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── FetchQueue.hpp         # 取指队列 FQ
 │   │   ├── FetchUnit.hpp          # 前端 PC 寄存器 + halt 状态（程序计数器 / haltFetched）
 │   │   ├── ICache.hpp             # 16KB 直接映射指令缓存（1024 行 × 16B，word4 行总线）
-│   │   ├── IssueArbiter.hpp       # issue 组合分配（IssuePacket，无 tick）
 │   │   ├── LSQ.hpp                # 加载/存储队列（store→load 转发）
 │   │   ├── Memory.hpp             # 带延迟的内存基类
 │   │   ├── PRF.hpp                # 物理寄存器堆（rename / free list / 完成端口）
@@ -51,8 +51,8 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── ROB.hpp                # 重排序缓冲（条目含 checkpoint 快照）
 │   │   ├── RS.hpp                 # 保留站（Integer / Load / StoreAddress / StoreValue / Branch）
 │   │   └── util.hpp               # 调试宏（VERBOSE 主题开关）
-│   ├── AGU/  ALU/  Arbiter/  BRU/  BranchPredictor/  CPU/  DCache/  DMEM/  Decoder/
-│   ├── FetchQueue/  FetchUnit/  ICache/  IMEM/  IssueArbiter/  LSQ/  PRF/
+│   ├── AGU/  ALU/  BPU/  BRU/  CPU/  DCache/  DMEM/  Decoder/  DynamicArbiter/
+│   ├── FetchUnit/  ICache/  IMEM/  InstructBuffer/  LQ/  SQ/  StaticArbiter/  PRF/
 │   ├── RAT/  ROB/  RS/   # 各模块 tick 实现
 │   └── main/
 ├── data/                          # 测试数据
@@ -267,7 +267,7 @@ TAGE 混合预测器（方向预测 TAGE 化；目标预测按控制流类型拆
 ### 6.2 逐测试点结果
 
 > 数据来自 2026-09-01 主树（已加入真 DCache：64KB/4 路/16B 行/LRU/写回+写分配，
-> 位于 MemRequestArbiter 与双口 DMEM 之间）。`VERBOSE=dcache` 可查命中率；clock 列已随
+> 位于 MemArbiter（原 MemRequestArbiter）与双口 DMEM 之间）。`VERBOSE=dcache` 可查命中率；clock 列已随
 > DCache 落地重写（宏观架构改动），x10 全部不变。耗时为本机（x86-64）无沙箱实测。
 
 | 测试点 | x10（返回值） | 时钟周期数 | 分支正确/总数 | 准确率 | 耗时 | 结果 |

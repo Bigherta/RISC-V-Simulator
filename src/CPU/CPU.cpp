@@ -125,8 +125,8 @@ void CPU::comb() {
   decodeInput.squashDetect = squashDetect;
   lqInput.squashDetect = squashDetect;
   sqInput.squashDetect = squashDetect;
-  auto memDispatch = MemRequestArbiter::arbitrate(LQModule, SQModule, ROBModule,
-                                                  DCacheModule, squashDetect);
+  auto memDispatch = MemArbiter::arbitrate(LQModule, SQModule, ROBModule,
+                                           DCacheModule, squashDetect);
   dcacheInput.squashDetect = squashDetect;
   dcacheInput.decision = memDispatch;
   // DMEM now only ever receives requests forwarded by the DCache: the DCache
@@ -213,15 +213,6 @@ void CPU::run() {
   }
   if (debug::enabled(debug::TOPIC_CLOCK))
     debug::print("clock: %llu\n", clock);
-  if (debug::enabled(debug::TOPIC_DCACHE)) {
-    uint32_t hits = CPUstate.DCacheModule.getHitCount();
-    uint32_t misses = CPUstate.DCacheModule.getMissCount();
-    debug::print("dcache: hits=%u misses=%u total=%u hit-rate=%.2f%% "
-                 "writebacks=%u\n",
-                 hits, misses, hits + misses,
-                 hits + misses ? 100.0 * hits / (hits + misses) : 0.0,
-                 CPUstate.DCacheModule.getWritebackCount());
-  }
   if (debug::enabled(debug::TOPIC_BRANCH))
     debug::print("branch: %llu/%llu correct (%.2f%%)\n",
                  CPUstate.BPUModule.getBranchCorrect(),

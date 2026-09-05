@@ -1,11 +1,10 @@
 #pragma once
-#include <variant>
 #ifndef COMMON_HPP
 #define COMMON_HPP
 #include <cstdint>
 using RobTag = uint8_t;
-constexpr int INTEGERRS_CAP = 16;
-constexpr int STORERS_CAP = 8;
+constexpr int INTEGERRS_CAP = 8;
+constexpr int STORERS_CAP = 4;
 constexpr int LOADRS_CAP = 4;
 constexpr int BRANCHRS_CAP = 4;
 constexpr int LQ_CAP = 16;
@@ -23,18 +22,16 @@ constexpr int ALU_CAP = 4;
 constexpr int AGU_CAP = 4;
 constexpr int BRU_CAP = 4;
 constexpr int PC_Direct_CAP = 1 << 12;
-constexpr int BTB_CAP = 512;
-constexpr int BHT_CAP = 1 << 9;
+constexpr int BTB_CAP = 256;
+constexpr int BHT_CAP = 1 << 8;
 constexpr int T0_CAP = 1 << 10;  // local base table, (pc ^ LHT) hashed index
-constexpr int LHT_CAP = 1 << 10; // per-PC local history table, pc[11:2] index
-constexpr int CONDSEEN_CAP = 1 << 10; // "this PC is a conditional" filter
-constexpr int SELECTOR_CAP = 1 << 12;
+constexpr int LHT_CAP = 1 << 9;  // per-PC local history table, pc[11:2] index
+constexpr int CONDSEEN_CAP = 1 << 9; // "this PC is a conditional" filter
 constexpr uint64_t HISTORY_MASK = ~UINT64_C(0);
-constexpr int SC_CAP = 512; // (unused: statistical corrector removed)
-constexpr int LOCAL_HISTORY_BIT = 8;
+constexpr int LOCAL_HISTORY_BIT = 7;
 constexpr int TARGETCACHE_CAP = 1 << LOCAL_HISTORY_BIT;
-constexpr int RAS_CAP = 16;
-constexpr int ALIGNQ_CAP = 32;
+constexpr int RAS_CAP = 8;
+constexpr int ALIGNQ_CAP = 16;
 constexpr int PRF_CAP = 128;
 // Sentinel for "no physical register" across the whole phy-tag domain
 // (RAT entries, freeList empty slots, Operand.tag immediates, ROB
@@ -47,7 +44,8 @@ inline constexpr int InvalidPhy = 0;
 constexpr int IMEM_CAP = 16;
 constexpr int CKPT_CAP = 64;
 constexpr int ICACHE_BLOCK_CAP = 16;
-constexpr int ICACHE_CAP = 512; // 8KB direct-mapped (512×16B), was 1024×16B=16KB
+constexpr int ICACHE_CAP =
+    512; // 8KB direct-mapped (512×16B), was 1024×16B=16KB
 constexpr int REQUEST_CAP = 4;
 constexpr int NUM_OF_WAYS = 4;
 // DCache geometry, overridable at compile time. Shrinking the cache (e.g.
@@ -108,12 +106,6 @@ enum class RISC_V {
   RV_INVALID,
 };
 
-struct ArithmeticCalculateResult {
-  int32_t value;
-  uint8_t robTag;
-  bool isControl;
-};
-
 struct AddressCalculateResult {
   int32_t value;
   uint8_t robTag;
@@ -128,7 +120,7 @@ struct BranchResult {
 
 // Arbiter->DCache
 struct MemRequest {
-  Operation op;     // Load | Store
+  Operation op; // Load | Store
   int32_t value;
   uint32_t address;
   bool isSigned;
@@ -148,10 +140,10 @@ struct ReadRequest { // 线路读 / NO_ALLOCATE load 透传
 };
 struct WriteRequest { // 线路写 / NO_ALLOCATE store 透传
   int remainCycle = 0;
-  uint32_t address = 0; // 块对齐(victim 基址重建)
+  uint32_t address = 0;      // 块对齐(victim 基址重建)
   uint8_t lineData[16] = {}; // LINE_WRITE 载荷
 };
-struct DMEMRequest {           // DCache → DMEM，双通道（每口一 valid）
+struct DMEMRequest { // DCache → DMEM，双通道（每口一 valid）
   bool readValid = false;
   ReadRequest read{};
   bool writeValid = false;
@@ -169,13 +161,21 @@ struct SquashInfo {
   uint32_t SquashPC = 0;
   uint8_t CkptId = 0;
 };
-
-struct CDBOutput {
-  ArithmeticCalculateResult result;
-  bool valid;
-  bool aluGranted;
-  bool memGranted;
+struct ALU;
+struct aluCDB {
+  int32_t value = 0;
+  uint8_t robTag = 0;
+  bool isControl = false;
+  bool valid = false;
+  static aluCDB build(const ALU &alu, const SquashInfo &squash);
+};
+struct LQ;
+struct lqCDB {
+  int32_t value = 0;
+  uint8_t robTag = 0;
   uint8_t memIndex = 0;
+  bool valid = false;
+  static lqCDB build(const LQ &lq, const SquashInfo &squash);
 };
 
 struct Operand {
@@ -275,11 +275,6 @@ struct DispatchBus {
 };
 class ROB;
 class PRF;
-struct CDBBus {
-  bool lsqSetCDB = false;
-  uint8_t memIndex = 0;
-  static CDBBus build(const CDBOutput &cdbOut, const SquashInfo &squashDetect);
-};
 struct BPU;
 struct FetchDecision {
   bool valid = false;

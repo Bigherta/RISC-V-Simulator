@@ -1,6 +1,5 @@
 #pragma once
 #include "BRU.hpp"
-#include "LQ.hpp"
 #include "SQ.hpp"
 #include "common.hpp"
 #include <cstdint>
@@ -31,13 +30,13 @@ struct ROBEntry {
 struct IssuePacket;
 struct ROBInput {
   SquashInfo squashDetect;
-  CDBOutput cdbOut;
+  aluCDB cdbOfALU;
+  lqCDB cdbOfLQ;
   const BRU &BRUModule;
-  const LQ &LQModule;
   const SQ &SQModule;
   const IssuePacket &issuePacket;
-  ROBInput(const BRU &bru, const LQ &lq, const SQ &sq, const IssuePacket &pkt)
-      : BRUModule(bru), LQModule(lq), SQModule(sq), issuePacket(pkt) {}
+  ROBInput(const BRU &bru, const SQ &sq, const IssuePacket &pkt)
+      : BRUModule(bru), SQModule(sq), issuePacket(pkt) {}
 };
 class ROB {
   friend struct ReorderTester;

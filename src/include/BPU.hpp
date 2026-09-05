@@ -23,8 +23,8 @@ struct systemState;
 // scheduling order.
 struct BPUInput {
   const BRU &BRUModule;
-  CDBOutput cdbOut;
   const ROB &ROBModule;
+  aluCDB cdbOut;
   SquashInfo squashDetect;
   FetchDecision fetchDecision;
   FetchTypeInfo fetchInfo;

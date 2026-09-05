@@ -27,7 +27,7 @@ struct LQInput {
   const DMEM &DMEMModule;
   const IssuePacket &issuePacket;
   const SQ &SQModule;
-  CDBBus cdbBus;
+  lqCDB cdbOutput;
   LoadResponse loadResp;
   MemDispatchDecision decision;
   StoreNotify storeNotifies[STORERS_CAP];

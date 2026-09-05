@@ -111,13 +111,27 @@ void CPU::comb() {
   fqInput.squashDetect = squashDetect;
   fqInput.haltFetched = FetchUnitModule.isHaltFetched();
   bpuInput.fetchDecision = fetchDecision;
-  cdbOut = CDBArbiter::build(ALUModule, LQModule, squashDetect);
+  cdbOfALU = aluCDB::build(ALUModule, squashDetect);
+  cdbOfLQ = lqCDB::build(LQModule, squashDetect);
+  // dual-CDB contention stats: count cycles where both buses have a grant,
+  // and which side a single-CDB arbiter would have preferred (older tag).
+  if (cdbOfALU.valid && cdbOfLQ.valid) {
+    ++statBoth;
+    if (ROB::isOlder(cdbOfLQ.robTag, cdbOfALU.robTag))
+      ++statLqWins;
+    else
+      ++statAluWins;
+  } else if (cdbOfALU.valid) {
+    ++statAluOnly;
+  } else if (cdbOfLQ.valid) {
+    ++statLqOnly;
+  }
   DispatchBus dispatchBus = DispatchArbiter::arbitrate(
       RSModule, ALUModule, AGUModule, BRUModule, ROBModule, PRFModule,
       squashDetect);
   aguInput.squashDetect = squashDetect;
   aluInput.squashDetect = squashDetect;
-  aluInput.cdbOut = cdbOut;
+  aluInput.cdbOutput = cdbOfALU;
   aluInput.dispatch = dispatchBus.alu;
   aguInput.dispatch = dispatchBus.agu;
   bruInput.dispatch = dispatchBus.bru;
@@ -165,20 +179,21 @@ void CPU::comb() {
   }
   rsInput.squashDetect = squashDetect;
   robInput.squashDetect = squashDetect;
-  robInput.cdbOut = cdbOut;
+  robInput.cdbOfALU = cdbOfALU;
+  robInput.cdbOfLQ = cdbOfLQ;
   prfInput.squashDetect = squashDetect;
-  prfInput.cdbOut = cdbOut;
+  prfInput.cdbOfALU = cdbOfALU;
+  prfInput.cdbOfLQ = cdbOfLQ;
   ratInput.squashDetect = squashDetect;
   flarbInput.squashDetect = squashDetect;
-  flarbInput.cdbOut = cdbOut;
+  flarbInput.cdbOut = cdbOfALU;
   isarbInput.squashDetect = squashDetect;
   issuePacket = IssueArbiter::build(isarbInput);
   bruInput.squashDetect = squashDetect;
   bpuInput.squashDetect = squashDetect;
-  bpuInput.cdbOut = cdbOut;
+  bpuInput.cdbOut = cdbOfALU;
   bpuInput.fetchInfo = scanJump(FQModule.getLastPush());
-  CDBBus cdbBus = CDBBus::build(cdbOut, squashDetect);
-  lqInput.cdbBus = cdbBus;
+  lqInput.cdbOutput = cdbOfLQ;
   // All load responses now come from the DCache (it is DMEM's sole client;
   // DMEM never receives Operation::Load anymore).
   lqInput.loadResp = DCacheModule.loadResp(squashDetect);
@@ -223,6 +238,19 @@ void CPU::run() {
                      : 0.0);
   if (debug::enabled(debug::TOPIC_BPMISS))
     CPUstate.BPUModule.dumpBpMiss();
+  if (debug::enabled(debug::TOPIC_ICACHE)) {
+    uint32_t h = CPUstate.ICacheModule.getHitCount();
+    uint32_t m = CPUstate.ICacheModule.getMissCount();
+    uint32_t t = h + m;
+    debug::print("icache: hits=%u misses=%u total=%u hit-rate=%.2f%%\n", h, m, t,
+                 t ? 100.0 * h / t : 0.0);
+  }
+  if (debug::enabled(debug::TOPIC_CDB)) {
+    debug::print("cdb: both=%llu aluOnly=%llu lqOnly=%llu "
+                 "(lqWins=%llu aluWins=%llu) total=%llu\n",
+                 statBoth, statAluOnly, statLqOnly, statLqWins, statAluWins,
+                 clock);
+  }
   std::cout << std::dec
             << (PRFModule.getValue(
                     RATModule.readRAT_PRF(ROBModule.getHaltRd())) &

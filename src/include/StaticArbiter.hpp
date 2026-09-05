@@ -23,26 +23,6 @@
 #include "common.hpp"
 #include <cstdint>
 
-struct CDBCandidate {
-  bool valid = false;
-  ArithmeticCalculateResult result{};
-  uint8_t memIndex = 0;
-};
-
-class CDBArbiter {
-public:
-  // build: collect the two CDB candidates from the module snapshots
-  // (ALU head / LSQ CDBDetect) then arbitrate -- the whole read()-side
-  // construction, producers stay unknown to the arbiter.
-  static CDBOutput build(const ALU &, const LQ &, const SquashInfo &);
-  // arbitrate between the two CDB candidates (ALU result / LSQ load value).
-  // Candidates are plain data collected from the module snapshots in read();
-  // the arbiter itself does not know the producers.
-  static CDBOutput arbitrate(const CDBCandidate &aluCandidate,
-                             const CDBCandidate &lsqCandidate,
-                             const SquashInfo &squash);
-};
-
 class DispatchArbiter {
 public:
   static DispatchBus arbitrate(const RSUnit &RS, const ALU &ALU, const AGU &AGU,

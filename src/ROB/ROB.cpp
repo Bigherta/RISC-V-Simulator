@@ -106,26 +106,6 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       CPUstate.ROBModule.setROBCommitReady(((brRobTag) & 0x3F));
     }
   }
-  // LQ set ROB ready (loads) - commit guard: a READY load must not cross an
-  // older store with unresolved address
-  auto lqHead = input.LQModule.getHead();
-  for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
-    uint8_t i = (lqHead + k) & 0x0F;
-    if (!input.LQModule.isActive(i))
-      continue;
-    if (input.LQModule.isReadyToCommit(i) &&
-        !input.SQModule.hasOlderUnresolvedAddressStore(
-            input.LQModule.getRobTag(i))) {
-      auto lqTag = input.LQModule.getRobTag(i);
-      if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash &&
-           ROB::isOlder(lqTag, input.squashDetect.SquashTag))) {
-        if (!isEmpty() && !ROB::isOlder(lqTag, getHead())) {
-          CPUstate.ROBModule.setROBCommitReady(((lqTag) & 0x3F));
-        }
-      }
-    }
-  }
   // SQ set ROB ready (stores)
   auto sqHead = input.SQModule.getHead();
   for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
@@ -143,13 +123,21 @@ void ROB::tick(const ROBInput &input, systemState &CPUstate) {
       }
     }
   }
-  // CDB set ROB ready
-  CDBOutput cdbOut = input.cdbOut;
-  if (cdbOut.valid) {
+  // CDB set ROB ready (dual)
+  if (input.cdbOfALU.valid) {
     if (!input.squashDetect.needSquash ||
-        ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto robIdx = ((cdbOut.result.robTag) & 0x3F);
-      if (!isEmpty() && !ROB::isOlder(cdbOut.result.robTag, getHead())) {
+        ROB::isOlder(input.cdbOfALU.robTag, input.squashDetect.SquashTag)) {
+      auto robIdx = ((input.cdbOfALU.robTag) & 0x3F);
+      if (!isEmpty() && !ROB::isOlder(input.cdbOfALU.robTag, getHead())) {
+        CPUstate.ROBModule.setROBCommitReady(robIdx);
+      }
+    }
+  }
+  if (input.cdbOfLQ.valid) {
+    if (!input.squashDetect.needSquash ||
+        ROB::isOlder(input.cdbOfLQ.robTag, input.squashDetect.SquashTag)) {
+      auto robIdx = ((input.cdbOfLQ.robTag) & 0x3F);
+      if (!isEmpty() && !ROB::isOlder(input.cdbOfLQ.robTag, getHead())) {
         CPUstate.ROBModule.setROBCommitReady(robIdx);
       }
     }

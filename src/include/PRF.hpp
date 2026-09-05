@@ -1,5 +1,4 @@
 #pragma once
-#include "LQ.hpp"
 #include "ROB.hpp"
 #include "common.hpp"
 #include <cstdint>
@@ -11,12 +10,11 @@ struct PRFEntry {
 struct PRFInput {
   const IssuePacket &issuePacket;
   SquashInfo squashDetect;
-  CDBOutput cdbOut;
-  const LQ &LQModule;
-  const SQ &SQModule;
+  aluCDB cdbOfALU;
+  lqCDB cdbOfLQ;
   const ROB &ROBModule;
-  PRFInput(const LQ &lq, const SQ &sq, const ROB &rob, const IssuePacket &pkt)
-      : LQModule(lq), SQModule(sq), ROBModule(rob), issuePacket(pkt) {}
+  PRFInput(const ROB &rob, const IssuePacket &pkt)
+      : ROBModule(rob), issuePacket(pkt) {}
 };
 struct systemState;
 class PRF {

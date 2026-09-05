@@ -43,7 +43,7 @@ RISC-V-Tomasulo-CPU-Simulator/
 │   │   ├── DMEM.hpp / IMEM.hpp    # 数据 / 指令内存（IMEM 带 3 周期延迟管线与整行突发；DMEM 双口：读 LINE_READ / 写 LINE_WRITE）
 │   │   ├── FetchQueue.hpp         # 取指队列 FQ
 │   │   ├── FetchUnit.hpp          # 前端 PC 寄存器 + halt 状态（程序计数器 / haltFetched）
-│   │   ├── ICache.hpp             # 16KB 直接映射指令缓存（1024 行 × 16B，word4 行总线）
+│   │   ├── ICache.hpp             # 8KB 直接映射指令缓存（512 行 × 16B，word4 行总线）
 │   │   ├── LSQ.hpp                # 加载/存储队列（store→load 转发）
 │   │   ├── Memory.hpp             # 带延迟的内存基类
 │   │   ├── PRF.hpp                # 物理寄存器堆（rename / free list / 完成端口）

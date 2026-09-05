@@ -55,52 +55,28 @@ void PRF::write(int index, int32_t value) {
 }
 
 void PRF::tick(const PRFInput &input, systemState &CPUstate) {
-  // LQ load value write-back - same commit guard as ROB: a load that crossed
-  // an unresolved-address older store must not write its value into the PRF
-  auto head = input.LQModule.getHead();
-  for (int k = 0; k < MEMQ_SCAN_WINDOW; ++k) {
-    uint8_t i = (head + k) & 0x0F;
-    if (!input.LQModule.isActive(i))
-      continue;
-    if (input.LQModule.isReadyToCommit(i) &&
-        !input.SQModule.hasOlderUnresolvedAddressStore(
-            input.LQModule.getRobTag(i))) {
-      auto lqTag = input.LQModule.getRobTag(i);
-      if (!input.squashDetect.needSquash ||
-          (input.squashDetect.needSquash &&
-           ROB::isOlder(lqTag, input.squashDetect.SquashTag))) {
-        if (!input.ROBModule.isEmpty() &&
-            !ROB::isOlder(lqTag, input.ROBModule.getHead())) {
-          int newPhy =
-              input.ROBModule.getNewPhy(((lqTag) & 0x3F));
-          if (newPhy != InvalidPhy) {
-            CPUstate.PRFModule.write(newPhy, input.LQModule.getValue(i));
-            if (debug::enabled(debug::TOPIC_PRF))
-              debug::print("PRF write P%d = %d (lq)\n", newPhy,
-                           input.LQModule.getValue(i));
-          }
+  if (input.cdbOfALU.valid) {
+    if (!input.squashDetect.needSquash ||
+        ROB::isOlder(input.cdbOfALU.robTag, input.squashDetect.SquashTag)) {
+      auto robIdx = ((input.cdbOfALU.robTag) & 0x3F);
+      auto isControl = input.cdbOfALU.isControl;
+      if (!isControl) {
+        auto value = input.cdbOfALU.value;
+        int newPhy = input.ROBModule.getNewPhy(robIdx);
+        if (newPhy != InvalidPhy) {
+          CPUstate.PRFModule.write(newPhy, value);
         }
       }
     }
   }
-  CDBOutput cdbOut = input.cdbOut;
-  if (cdbOut.valid) {
+  if (input.cdbOfLQ.valid) {
     if (!input.squashDetect.needSquash ||
-        ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto robIdx = ((cdbOut.result.robTag) & 0x3F);
-      auto isControl = cdbOut.result.isControl;
-      if (!isControl) {
-        auto value = cdbOut.result.value;
-        int newPhy = input.ROBModule.getNewPhy(robIdx);
-        if (newPhy != InvalidPhy) {
-          CPUstate.PRFModule.write(newPhy, value);
-          if (debug::enabled(debug::TOPIC_PRF)) {
-            debug::print("PRF write P%d = %d (cdb)\n", newPhy, value);
-            if (isReady(newPhy) && getValue(newPhy) != value)
-              debug::print("PRF mismatch P%d: rob=%d prf=%d\n", newPhy, value,
-                           getValue(newPhy));
-          }
-        }
+        ROB::isOlder(input.cdbOfLQ.robTag, input.squashDetect.SquashTag)) {
+      auto robIdx = ((input.cdbOfLQ.robTag) & 0x3F);
+      auto value = input.cdbOfLQ.value;
+      int newPhy = input.ROBModule.getNewPhy(robIdx);
+      if (newPhy != InvalidPhy) {
+        CPUstate.PRFModule.write(newPhy, value);
       }
     }
   }

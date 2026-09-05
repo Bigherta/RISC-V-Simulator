@@ -32,7 +32,7 @@ struct FlushArbiterInput {
   const ROB &ROBModule;
   const AGU &AGUModule;
   const LQ &LQModule;
-  CDBOutput cdbOut;
+  aluCDB cdbOut;
   SquashInfo squashDetect;
   FlushArbiterInput(const BRU &bru, const ROB &rob, const AGU &agu,
                     const LQ &lq)

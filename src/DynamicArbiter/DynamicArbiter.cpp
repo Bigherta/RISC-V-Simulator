@@ -85,25 +85,25 @@ void FlushArbiter::tick(const FlushArbiterInput &input, systemState &CPUstate) {
       CPUstate.flushArbiter.receive(BranchSquash);
   }
 
-  CDBOutput cdbOut = input.cdbOut;
+  const auto & cdbOut = input.cdbOut;
   if (cdbOut.valid) {
     if (!input.squashDetect.needSquash ||
-        ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag)) {
-      auto isControl = cdbOut.result.isControl;
+        ROB::isOlder(cdbOut.robTag, input.squashDetect.SquashTag)) {
+      auto isControl = cdbOut.isControl;
 
       if (!input.ROBModule.isEmpty() &&
-          !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.getHead()) &&
+          !ROB::isOlder(cdbOut.robTag, input.ROBModule.getHead()) &&
           isControl) {
         SquashInfo JumpSquash;
-        const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+        const auto pc = static_cast<uint32_t>(cdbOut.value);
         if (pc !=
-            input.ROBModule.getPredictedPC(((cdbOut.result.robTag) & 0x3F))) {
+            input.ROBModule.getPredictedPC(((cdbOut.robTag) & 0x3F))) {
           if (debug::enabled(debug::TOPIC_BPMISS))
-            debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.result.robTag,
+            debug::print("squash tag=%u pc=%u (jalr)\n", cdbOut.robTag,
                          pc);
           JumpSquash.needSquash = true;
           JumpSquash.SquashPC = pc;
-          JumpSquash.SquashTag = cdbOut.result.robTag;
+          JumpSquash.SquashTag = cdbOut.robTag;
           JumpSquash.CkptId =
               input.ROBModule.getCkptId(JumpSquash.SquashTag & 0x3F);
         }

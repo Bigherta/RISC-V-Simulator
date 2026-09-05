@@ -1,5 +1,6 @@
 #include "../include/ALU.hpp"
 #include "../include/CPU.hpp"
+#include "../include/common.hpp"
 #include <cstdint>
 void ALU::push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
                bool isControl) {
@@ -47,7 +48,10 @@ void ALU::push(int32_t op1, int32_t op2, Operation op, RobTag robTag,
       break;
     }
   }
-  ArithmeticCalculateResult result{value, robTag, isControl};
+  ArithmeticCalculateResult result{};
+  result.value = value;
+  result.robTag = robTag;
+  result.isControl = isControl;
   for (int i = 0; i < ALU_CAP; i++)
     if (!slotValid[i]) {
       outputBuffer[i] = result;
@@ -127,11 +131,24 @@ void ALU::tick(const ALUInput &input, systemState &CPUstate) {
                             isControlOp(rs.op));
   }
   // ALU writeBack: consume this unit's own grant on the CDB result.
-  if (input.cdbOut.valid && input.cdbOut.aluGranted) {
-    CPUstate.ALUModule.remove(input.cdbOut.result.robTag);
+  if (input.cdbOutput.valid) {
+    CPUstate.ALUModule.remove(input.cdbOutput.robTag);
   }
   // clear the wrong ALU outputBuffer
   if (input.squashDetect.needSquash) {
     CPUstate.ALUModule.flush(input.squashDetect.SquashTag);
   }
+}
+aluCDB aluCDB::build(const ALU &alu, const SquashInfo &squash) {
+  aluCDB alucdb{};
+  if (!alu.isEmpty()) {
+    uint8_t tag = alu.headRobTag();
+    if (!squash.needSquash || ROB::isOlder(tag, squash.SquashTag)) {
+      alucdb.valid = true;
+      alucdb.value = alu.headValue();
+      alucdb.robTag = tag;
+      alucdb.isControl = alu.headIsControl();
+    }
+  }
+  return alucdb;
 }

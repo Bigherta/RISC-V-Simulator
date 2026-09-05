@@ -72,7 +72,13 @@ private:
   BPU BPUModule;
   FlushArbiter flushArbiter;
   FetchUnit FetchUnitModule;
-  CDBOutput cdbOut;
+  aluCDB cdbOfALU;
+  lqCDB cdbOfLQ;
+  uint64_t statAluOnly = 0;   // cycles with only an ALU CDB candidate
+  uint64_t statLqOnly = 0;    // cycles with only an LQ CDB candidate
+  uint64_t statBoth = 0;      // cycles both valid (dual-CDB parallel grant)
+  uint64_t statLqWins = 0;    // both valid, LQ older (single-CDB would grant LQ)
+  uint64_t statAluWins = 0;   // both valid, ALU older (single-CDB would grant ALU)
   IssuePacket issuePacket;
   AGUInput aguInput{RSModule, PRFModule};
   ALUInput aluInput{RSModule, PRFModule};
@@ -86,8 +92,8 @@ private:
   SQInput sqInput{AGUModule, RSModule, PRFModule, ROBModule, DMEMModule,
                    LQModule, issuePacket};
   RSInput rsInput{issuePacket, PRFModule};
-  ROBInput robInput{BRUModule, LQModule, SQModule, issuePacket};
-  PRFInput prfInput{LQModule, SQModule, ROBModule, issuePacket};
+  ROBInput robInput{BRUModule, SQModule, issuePacket};
+  PRFInput prfInput{ROBModule, issuePacket};
   RATInput ratInput{ROBModule, issuePacket};
   FlushArbiterInput flarbInput{BRUModule, ROBModule, AGUModule, LQModule};
   IssueArbiterInput isarbInput{DecodeUnitModule, ROBModule, RSModule,

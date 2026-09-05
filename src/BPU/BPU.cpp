@@ -390,14 +390,14 @@ void BPU::tick(const BPUInput &input, systemState &CPUstate) {
       }
     }
   }
-  auto cdbOut = input.cdbOut;
-  if (cdbOut.valid && cdbOut.result.isControl && !input.ROBModule.isEmpty() &&
-      !ROB::isOlder(cdbOut.result.robTag, input.ROBModule.getHead())) {
-    auto robIdx = ((cdbOut.result.robTag) & 0x3F);
-    const auto pc = static_cast<uint32_t>(cdbOut.result.value);
+  const auto& cdbOut = input.cdbOut;
+  if (cdbOut.valid && cdbOut.isControl && !input.ROBModule.isEmpty() &&
+      !ROB::isOlder(cdbOut.robTag, input.ROBModule.getHead())) {
+    auto robIdx = ((cdbOut.robTag) & 0x3F);
+    const auto pc = static_cast<uint32_t>(cdbOut.value);
     if (!input.squashDetect.needSquash ||
         (input.squashDetect.needSquash &&
-         ROB::isOlder(cdbOut.result.robTag, input.squashDetect.SquashTag))) {
+         ROB::isOlder(cdbOut.robTag, input.squashDetect.SquashTag))) {
       ++CPUstate.BPUModule.branchTotal;
       bool correct = pc == input.ROBModule.getPredictedPC(robIdx);
       if (correct)

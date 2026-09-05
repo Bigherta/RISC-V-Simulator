@@ -1,6 +1,7 @@
 #include "../include/LQ.hpp"
 #include "../include/CPU.hpp"
 #include "../include/ROB.hpp"
+#include "../include/common.hpp"
 #include <cstdint>
 #include <stdexcept>
 
@@ -194,11 +195,29 @@ void LQ::tick(const LQInput &input, systemState &CPUstate) {
     CPUstate.LQModule.writeValueIfFetching(input.loadResp.robTag,
                                            memSlot(input.loadResp.memIndex),
                                            input.loadResp.value);
-  // CDB consume
-  if (input.cdbBus.lsqSetCDB)
-    CPUstate.LQModule.setCDBBroadcast(memSlot(input.cdbBus.memIndex));
+  // CDB consume (LQ bus)
+  if (input.cdbOutput.valid) {
+    if (!input.squashDetect.needSquash ||
+        ROB::isOlder(input.cdbOutput.robTag, input.squashDetect.SquashTag)) {
+      CPUstate.LQModule.setCDBBroadcast(memSlot(input.cdbOutput.memIndex));
+    }
+  }
   // flush on squash
   if (input.squashDetect.needSquash)
     CPUstate.LQModule.flush(
         input.ROBModule.getLqtTailSnapshot(input.squashDetect.SquashTag & 0x3F));
+}
+lqCDB lqCDB::build(const LQ &lq, const SquashInfo &squash) {
+  lqCDB lqcdb{};
+  auto lsqCDBDetect = lq.CDBDetect();
+  if (lsqCDBDetect != -1) {
+    uint8_t tag = lq.getRobTag(lsqCDBDetect);
+    if (!squash.needSquash || ROB::isOlder(tag, squash.SquashTag)) {
+      lqcdb.valid = true;
+      lqcdb.memIndex = static_cast<uint8_t>(lsqCDBDetect);
+      lqcdb.robTag = tag;
+      lqcdb.value = lq.getValue(lsqCDBDetect);
+    }
+  }
+  return lqcdb;
 }
